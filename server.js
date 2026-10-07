@@ -1,12 +1,16 @@
 require('dotenv').config();
 const express = require('express');
 const eventRoutes = require('./routes/eventRoutes');
+const authRoutes = require('./routes/auth');
+const profileRoutes = require('./routes/profile');
 
 const app = express();
 const PORT = 3000;
 
 app.use(express.json());
 
+app.use('/auth', authRoutes);
+app.use('/', profileRoutes);
 app.use('/events', eventRoutes);
 
 app.use((req, res, next) => {

@@ -8,8 +8,10 @@
     "dev": "nodemon server.js"
   },
   "dependencies": {
+    "bcrypt": "^6.0.0",
     "dotenv": "^18.0.3",
     "express": "^4.22.2",
+    "jsonwebtoken": "^9.0.3",
     "pg": "^8.23.0",
     "pg-hstore": "^2.3.4",
     "sequelize": "^6.37.8"

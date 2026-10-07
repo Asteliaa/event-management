@@ -1,12 +1,16 @@
 require('dotenv').config();
 const express = require('express');
 const eventRoutes = require('./routes/eventRoutes');
+const authRoutes = require('./routes/auth');
+const profileRoutes = require('./routes/profile');
 
 const app = express();
 const PORT = 3000;
 
 app.use(express.json());
 
+app.use('/auth', authRoutes);
+app.use('/', profileRoutes);
 app.use('/events', eventRoutes);
 
 app.use((req, res, next) => {
@@ -18,6 +22,10 @@ app.use((err, req, res, next) => {
     res.status(500).json({ error: "Внутренняя ошибка сервера" });
 });
 
-app.listen(PORT, () => {
-    console.log(`Сервер запущен на http://localhost:${PORT}`);
-});
+if (require.main === module) {
+    app.listen(PORT, () => {
+        console.log(`Сервер запущен на http://localhost:${PORT}`);
+    });
+}
+
+module.exports = app;

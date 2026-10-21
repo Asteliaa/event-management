@@ -1,15 +1,13 @@
 import EventList from './components/EventList.jsx';
 
-export default function App() {
+function App() {
   return (
-    <div className="app">
-      <header className="app-header">
-        <h1>Платформа мероприятий</h1>
-        <p>Конференции, вебинары и встречи. Данные хранятся в браузере (localStorage).</p>
-      </header>
-      <main>
-        <EventList />
-      </main>
+    <div className="container">
+      <h1>Мероприятия</h1>
+      <p className="subtitle">Список конференций, вебинаров и встреч</p>
+      <EventList />
     </div>
   );
 }
+
+export default App;

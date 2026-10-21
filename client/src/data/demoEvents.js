@@ -1,33 +1,34 @@
-// Демонстрационные мероприятия: используются, если в localStorage еще нет данных
+// Типы мероприятий
 export const EVENT_TYPES = {
   conference: 'Конференция',
   webinar: 'Вебинар',
   meeting: 'Встреча',
 };
 
+// Начальные данные, если в localStorage ничего нет
 export const demoEvents = [
   {
-    id: 'demo-1',
+    id: 1,
     title: 'Конференция «Веб-технологии 2026»',
     type: 'conference',
     date: '2026-11-20',
     capacity: 150,
-    description: 'Доклады о React, Node.js и облачной разработке.',
+    description: 'Доклады о React и Node.js',
   },
   {
-    id: 'demo-2',
-    title: 'Вебинар «Хуки React на практике»',
+    id: 2,
+    title: 'Вебинар по хукам React',
     type: 'webinar',
     date: '2026-10-25',
     capacity: 80,
-    description: 'Разбор useState, useEffect и пользовательских хуков.',
+    description: 'useState, useEffect и свои хуки',
   },
   {
-    id: 'demo-3',
+    id: 3,
     title: 'Встреча выпускников ФИТУ',
     type: 'meeting',
     date: '2026-09-12',
     capacity: 40,
-    description: 'Неформальная встреча в аудитории 502.',
+    description: 'Аудитория 502',
   },
 ];

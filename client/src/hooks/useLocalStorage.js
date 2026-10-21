@@ -1,82 +1,45 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useState } from 'react';
 
-function readStorage(key, fallback) {
-  try {
-    const raw = window.localStorage.getItem(key);
-    return raw === null ? fallback : JSON.parse(raw);
-  } catch {
-    // Поврежденный JSON или недоступное хранилище: начинаем с начальных данных
-    return fallback;
-  }
-}
-
-function writeStorage(key, value) {
-  try {
-    window.localStorage.setItem(key, JSON.stringify(value));
-    return true;
-  } catch {
-    return false;
-  }
-}
-
-/**
- * Состояние, синхронизированное с localStorage.
- * loadDelay имитирует ответ сервера при монтировании,
- * saveDelay задает debounce автосохранения после последнего изменения.
- */
-export function useLocalStorage(key, initialValue, { loadDelay = 0, saveDelay = 0 } = {}) {
-  const [value, setValue] = useState(initialValue);
-  const [isLoading, setIsLoading] = useState(true);
+// Хук для хранения списка в localStorage
+export function useLocalStorage(key, initialValue) {
+  const [value, setValue] = useState([]);
+  const [loading, setLoading] = useState(true);
   const [savedAt, setSavedAt] = useState(null);
-  const [isDirty, setIsDirty] = useState(false);
-  const latest = useRef(value);
-  // Начальное значение нужно только при первом запуске, поэтому хранится в ref и не входит в зависимости
-  const initialRef = useRef(initialValue);
-  const skipNextSave = useRef(true);
 
-  // Загрузка при монтировании (пустой массив зависимостей).
+  // Загрузка при монтировании (имитация запроса к серверу 1 секунда)
   useEffect(() => {
     const timer = setTimeout(() => {
-      const stored = readStorage(key, null);
-      if (stored === null) {
-        // Хранилище пустое: инициализируем начальными данными и сразу сохраняем их
-        writeStorage(key, initialRef.current);
-        setValue(initialRef.current);
-      } else {
-        setValue(stored);
+      let data = null;
+      try {
+        data = JSON.parse(localStorage.getItem(key));
+      } catch {
+        data = null; // в хранилище испорченные данные
       }
-      setIsLoading(false);
-    }, loadDelay);
-    // Очистка: если компонент размонтирован до окончания «загрузки», таймер отменяется
-    return () => clearTimeout(timer);
-  }, [key, loadDelay]);
+      if (!Array.isArray(data)) {
+        data = initialValue;
+        localStorage.setItem(key, JSON.stringify(data));
+      }
+      setValue(data);
+      setLoading(false);
+    }, 1000);
 
-  // Сохранение при каждом изменении value с задержкой saveDelay (debounce).
+    return () => clearTimeout(timer);
+    // пустой массив: загрузка только один раз при монтировании
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Автосохранение через 500 мс после последнего изменения
   useEffect(() => {
-    latest.current = value;
-    if (isLoading) return undefined;
-    if (skipNextSave.current) {
-      // Первое срабатывание после загрузки: данные только что прочитаны, писать нечего
-      skipNextSave.current = false;
-      return undefined;
-    }
-    setIsDirty(true);
+    if (loading) return;
     const timer = setTimeout(() => {
-      if (writeStorage(key, value)) setSavedAt(new Date());
-      setIsDirty(false);
-    }, saveDelay);
-    // Новое изменение до истечения задержки отменяет предыдущий таймер
+      localStorage.setItem(key, JSON.stringify(value));
+      setSavedAt(new Date());
+    }, 500);
+
     return () => clearTimeout(timer);
-  }, [key, value, isLoading, saveDelay]);
+    // сохраняем при каждом изменении списка
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value]);
 
-  // Если страницу закрывают или перезагружают раньше, чем сработал таймер,
-  // последнее значение записывается немедленно.
-  useEffect(() => {
-    if (isLoading) return undefined;
-    const flush = () => writeStorage(key, latest.current);
-    window.addEventListener('pagehide', flush);
-    return () => window.removeEventListener('pagehide', flush);
-  }, [key, isLoading]);
-
-  return { value, setValue, isLoading, isDirty, savedAt };
+  return [value, setValue, loading, savedAt];
 }

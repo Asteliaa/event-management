@@ -1,102 +1,64 @@
-import { useEffect, useRef, useState } from 'react';
+import { useState } from 'react';
 import { EVENT_TYPES } from '../data/demoEvents.js';
 
 const emptyForm = { title: '', type: 'conference', date: '', capacity: '', description: '' };
 
-function toForm(event) {
-  return event ? { ...event, capacity: String(event.capacity) } : emptyForm;
-}
+function EventForm({ editingEvent, onSave, onCancel }) {
+  // Значения полей формы
+  const [form, setForm] = useState(editingEvent ? { ...editingEvent } : emptyForm);
+  const [error, setError] = useState('');
 
-function validate(form) {
-  const errors = {};
-  if (!form.title.trim()) errors.title = 'Введите название';
-  if (!form.date) errors.date = 'Укажите дату';
-  const capacity = Number(form.capacity);
-  if (form.capacity === '' || !Number.isInteger(capacity) || capacity < 1) {
-    errors.capacity = 'Целое число от 1';
+  function handleChange(e) {
+    setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
   }
-  return errors;
-}
 
-// Контролируемая форма: значение каждого поля хранится в состоянии компонента
-export default function EventForm({ editingEvent, onSubmit, onCancel }) {
-  const [form, setForm] = useState(() => toForm(editingEvent));
-  const [errors, setErrors] = useState({});
-  const titleRef = useRef(null);
-
-  // Форма пересоздается через key при смене редактируемого мероприятия (см. EventList),
-  // поэтому эффект нужен только для фокуса на поле названия
-  useEffect(() => {
-    if (editingEvent) titleRef.current?.focus();
-  }, [editingEvent]);
-
-  const handleChange = (e) => {
-    const { name, value } = e.target;
-    // Функциональное обновление: новое состояние строится из предыдущего
-    setForm((prev) => ({ ...prev, [name]: value }));
-  };
-
-  const handleSubmit = (e) => {
-    e.preventDefault(); // без перезагрузки страницы; Enter в любом поле тоже отправляет форму
-    const found = validate(form);
-    setErrors(found);
-    if (Object.keys(found).length > 0) return;
-    onSubmit({
-      ...form,
-      title: form.title.trim(),
-      description: form.description.trim(),
-      capacity: Number(form.capacity),
-    });
+  // Срабатывает по кнопке и по Enter в любом поле
+  function handleSubmit(e) {
+    e.preventDefault();
+    if (!form.title.trim() || !form.date || Number(form.capacity) < 1) {
+      setError('Заполните название, дату и количество мест (больше 0)');
+      return;
+    }
+    onSave({ ...form, title: form.title.trim(), capacity: Number(form.capacity) });
+    setError('');
     if (!editingEvent) setForm(emptyForm);
-  };
-
-  const handleKeyDown = (e) => {
-    if (e.key === 'Escape' && editingEvent) onCancel();
-  };
+  }
 
   return (
-    <form className="card event-form" onSubmit={handleSubmit} onKeyDown={handleKeyDown} noValidate>
-      <h2>{editingEvent ? 'Редактирование мероприятия' : 'Новое мероприятие'}</h2>
-      <div className="form-grid">
-        <label className="field field-wide">
-          <span>Название</span>
-          <input ref={titleRef} name="title" value={form.title} onChange={handleChange}
-            placeholder="Например, Митап по Node.js" />
-          {errors.title && <small className="error">{errors.title}</small>}
-        </label>
-        <label className="field">
-          <span>Тип</span>
-          <select name="type" value={form.type} onChange={handleChange}>
-            {Object.entries(EVENT_TYPES).map(([value, label]) => (
-              <option key={value} value={value}>{label}</option>
-            ))}
-          </select>
-        </label>
-        <label className="field">
-          <span>Дата</span>
-          <input type="date" name="date" value={form.date} onChange={handleChange} />
-          {errors.date && <small className="error">{errors.date}</small>}
-        </label>
-        <label className="field">
-          <span>Мест</span>
-          <input type="number" min="1" name="capacity" value={form.capacity} onChange={handleChange} />
-          {errors.capacity && <small className="error">{errors.capacity}</small>}
-        </label>
-        <label className="field field-wide">
-          <span>Описание</span>
-          <input name="description" value={form.description} onChange={handleChange}
-            placeholder="Коротко о мероприятии" />
-        </label>
-      </div>
-      <div className="form-actions">
-        <button type="submit" className="btn btn-primary">
-          {editingEvent ? 'Сохранить' : 'Добавить'}
-        </button>
-        {editingEvent && (
-          <button type="button" className="btn" onClick={onCancel}>Отмена</button>
-        )}
-        <span className="hint">Enter – {editingEvent ? 'сохранить' : 'добавить'}{editingEvent && ', Esc – отмена'}</span>
-      </div>
+    <form className="event-form" onSubmit={handleSubmit}>
+      <h2>{editingEvent ? 'Редактирование' : 'Добавить мероприятие'}</h2>
+
+      <label>
+        Название
+        <input name="title" value={form.title} onChange={handleChange} />
+      </label>
+      <label>
+        Тип
+        <select name="type" value={form.type} onChange={handleChange}>
+          {Object.entries(EVENT_TYPES).map(([value, label]) => (
+            <option key={value} value={value}>{label}</option>
+          ))}
+        </select>
+      </label>
+      <label>
+        Дата
+        <input type="date" name="date" value={form.date} onChange={handleChange} />
+      </label>
+      <label>
+        Мест
+        <input type="number" name="capacity" value={form.capacity} onChange={handleChange} />
+      </label>
+      <label>
+        Описание
+        <input name="description" value={form.description} onChange={handleChange} />
+      </label>
+
+      {error && <p className="error">{error}</p>}
+
+      <button type="submit">{editingEvent ? 'Сохранить' : 'Добавить'}</button>
+      {editingEvent && <button type="button" onClick={onCancel}>Отмена</button>}
     </form>
   );
 }
+
+export default EventForm;

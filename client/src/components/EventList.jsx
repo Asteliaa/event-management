@@ -1,106 +1,117 @@
-import { useCallback, useMemo, useState } from 'react';
-import { demoEvents } from '../data/demoEvents.js';
+import { useEffect, useState } from 'react';
 import { useLocalStorage } from '../hooks/useLocalStorage.js';
-import { useDocumentTitle } from '../hooks/useDocumentTitle.js';
-import { filterEvents, getStats, sortEvents } from '../utils/events.js';
+import { demoEvents, EVENT_TYPES } from '../data/demoEvents.js';
 import EventForm from './EventForm.jsx';
-import EventFilters from './EventFilters.jsx';
 import EventItem from './EventItem.jsx';
-import EventStats from './EventStats.jsx';
-import StoragePreview from './StoragePreview.jsx';
 
-export const STORAGE_KEY = 'event-management:events';
+// Сегодняшняя дата в формате ГГГГ-ММ-ДД (для подсчёта предстоящих)
+const today = new Date().toLocaleDateString('sv');
 
-const timeFormat = new Intl.DateTimeFormat('ru-RU', { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+function EventList() {
+  // Список мероприятий хранится в localStorage
+  const [events, setEvents, loading, savedAt] = useLocalStorage('events', demoEvents);
+  // Мероприятие, которое сейчас редактируется
+  const [editingEvent, setEditingEvent] = useState(null);
+  // Фильтр и сортировка
+  const [search, setSearch] = useState('');
+  const [typeFilter, setTypeFilter] = useState('all');
+  const [sortBy, setSortBy] = useState('date');
 
-export default function EventList() {
-  // Массив мероприятий: загрузка при монтировании (1 с) и автосохранение (debounce 500 мс)
-  const {
-    value: events,
-    setValue: setEvents,
-    isLoading,
-    isDirty,
-    savedAt,
-  } = useLocalStorage(STORAGE_KEY, demoEvents, { loadDelay: 1000, saveDelay: 500 });
+  // Заголовок вкладки показывает количество мероприятий
+  useEffect(() => {
+    document.title = `Мероприятия (${events.length})`;
+  }, [events]);
 
-  // id редактируемого мероприятия (null – режим добавления)
-  const [editingId, setEditingId] = useState(null);
-  // Состояние фильтра и сортировки
-  const [filters, setFilters] = useState({ query: '', type: 'all', period: 'all', sortBy: 'date-asc' });
-
-  // Производные данные вычисляются при рендере и не хранятся в состоянии
-  const visibleEvents = useMemo(
-    () => sortEvents(filterEvents(events, filters), filters.sortBy),
-    [events, filters],
-  );
-  const stats = useMemo(() => getStats(events), [events]);
-  const editingEvent = events.find((event) => event.id === editingId) ?? null;
-
-  useDocumentTitle(isLoading ? 'Загрузка… | Event Management' : `Мероприятия (${events.length}) | Event Management`);
-
-  const handleSubmit = (data) => {
+  function handleSave(data) {
     if (editingEvent) {
-      setEvents((prev) => prev.map((event) => (event.id === editingEvent.id ? { ...data, id: event.id } : event)));
-      setEditingId(null);
+      setEvents((prev) => prev.map((e) => (e.id === editingEvent.id ? { ...data, id: e.id } : e)));
+      setEditingEvent(null);
     } else {
-      setEvents((prev) => [...prev, { id: crypto.randomUUID(), ...data }]);
+      setEvents((prev) => [...prev, { ...data, id: Date.now() }]);
     }
-  };
-
-  // useCallback сохраняет ссылки на функции между рендерами, иначе React.memo в EventItem бесполезен
-  const handleDelete = useCallback((id) => {
-    setEvents((prev) => prev.filter((event) => event.id !== id));
-    setEditingId((current) => (current === id ? null : current));
-  }, [setEvents]);
-
-  const handleEdit = useCallback((id) => setEditingId(id), []);
-  const handleCancel = useCallback(() => setEditingId(null), []);
-
-  if (isLoading) {
-    return (
-      <div className="card loading" role="status">
-        <span className="spinner" aria-hidden="true" />
-        Загрузка мероприятий…
-      </div>
-    );
   }
 
-  let saveStatus = 'Данные загружены';
-  if (isDirty) saveStatus = 'Сохранение…';
-  else if (savedAt) saveStatus = `Сохранено в ${timeFormat.format(savedAt)}`;
+  function handleDelete(id) {
+    setEvents((prev) => prev.filter((e) => e.id !== id));
+    if (editingEvent && editingEvent.id === id) setEditingEvent(null);
+  }
+
+  if (loading) {
+    return <p>Загрузка...</p>;
+  }
+
+  // Фильтрация и сортировка
+  const visible = events
+    .filter((e) => typeFilter === 'all' || e.type === typeFilter)
+    .filter((e) => e.title.toLowerCase().includes(search.toLowerCase()))
+    .sort((a, b) => {
+      if (sortBy === 'title') return a.title.localeCompare(b.title);
+      if (sortBy === 'capacity') return b.capacity - a.capacity;
+      return a.date.localeCompare(b.date);
+    });
+
+  // Статистика
+  const upcoming = events.filter((e) => e.date >= today).length;
+  const totalSeats = events.reduce((sum, e) => sum + e.capacity, 0);
 
   return (
-    <>
-      <EventStats stats={stats} />
-      <EventForm key={editingId ?? 'new'} editingEvent={editingEvent} onSubmit={handleSubmit} onCancel={handleCancel} />
-      <EventFilters filters={filters} onChange={setFilters} />
+    <div>
+      <EventForm
+        key={editingEvent ? editingEvent.id : 'new'}
+        editingEvent={editingEvent}
+        onSave={handleSave}
+        onCancel={() => setEditingEvent(null)}
+      />
 
-      <div className="list-header">
-        <h2>Список мероприятий</h2>
-        <span className="save-status" aria-live="polite">{saveStatus}</span>
+      <div className="filters">
+        <input
+          placeholder="Поиск по названию"
+          value={search}
+          onChange={(e) => setSearch(e.target.value)}
+        />
+        <select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
+          <option value="all">Все типы</option>
+          {Object.entries(EVENT_TYPES).map(([value, label]) => (
+            <option key={value} value={value}>{label}</option>
+          ))}
+        </select>
+        <select value={sortBy} onChange={(e) => setSortBy(e.target.value)}>
+          <option value="date">По дате</option>
+          <option value="title">По названию</option>
+          <option value="capacity">По количеству мест</option>
+        </select>
       </div>
 
-      {visibleEvents.length === 0 ? (
-        <p className="card empty">
-          {events.length === 0
-            ? 'Мероприятий пока нет. Добавьте первое с помощью формы выше.'
-            : 'Ничего не найдено по заданным условиям.'}
-        </p>
+      <p>
+        Всего: {events.length}, предстоящих: {upcoming}, прошедших: {events.length - upcoming},
+        мест: {totalSeats}
+      </p>
+
+      {visible.length === 0 ? (
+        <p>Мероприятий не найдено</p>
       ) : (
-        <ul className="event-list">
-          {visibleEvents.map((event) => (
-            <EventItem
-              key={event.id}
-              event={event}
-              isEditing={event.id === editingId}
-              onEdit={handleEdit}
-              onDelete={handleDelete}
-            />
-          ))}
-        </ul>
+        <table>
+          <thead>
+            <tr>
+              <th>Название</th>
+              <th>Тип</th>
+              <th>Дата</th>
+              <th>Мест</th>
+              <th>Описание</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            {visible.map((event) => (
+              <EventItem key={event.id} event={event} onEdit={setEditingEvent} onDelete={handleDelete} />
+            ))}
+          </tbody>
+        </table>
       )}
-      <p className="shown">Показано {visibleEvents.length} из {events.length}</p>
-      <StoragePreview storageKey={STORAGE_KEY} />
-    </>
+
+      {savedAt && <p className="saved">Сохранено в {savedAt.toLocaleTimeString('ru-RU')}</p>}
+    </div>
   );
 }
+
+export default EventList;

@@ -1,0 +1,172 @@
+body {
+  margin: 0;
+  font-family: 'Segoe UI', Arial, sans-serif;
+  font-size: 15px;
+  color: #222;
+  background: #f3f4f6;
+}
+
+.container {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 24px 20px;
+}
+
+h1 {
+  margin: 0 0 4px;
+  color: #1e3a5f;
+}
+
+.subtitle {
+  margin: 0 0 20px;
+  color: #666;
+}
+
+h2 {
+  grid-column: 1 / -1;
+  font-size: 18px;
+  margin: 0 0 4px;
+  color: #1e3a5f;
+}
+
+/* Форма */
+.event-form {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 12px 16px;
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  padding: 16px 20px;
+  margin-bottom: 20px;
+}
+
+.event-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 14px;
+  color: #444;
+}
+
+.event-form .wide {
+  grid-column: 1 / -1;
+}
+
+input,
+select {
+  font: inherit;
+  padding: 6px 8px;
+  border: 1px solid #bbb;
+  border-radius: 4px;
+  background: #fff;
+}
+
+input:focus,
+select:focus {
+  outline: none;
+  border-color: #2b6cb0;
+}
+
+.form-buttons {
+  grid-column: 1 / -1;
+}
+
+/* Кнопки */
+button {
+  font: inherit;
+  font-size: 14px;
+  padding: 6px 14px;
+  margin-right: 6px;
+  border: 1px solid #bbb;
+  border-radius: 4px;
+  background: #fff;
+  cursor: pointer;
+}
+
+button:hover {
+  background: #eee;
+}
+
+button.primary {
+  background: #2b6cb0;
+  border-color: #2b6cb0;
+  color: #fff;
+}
+
+button.primary:hover {
+  background: #24578f;
+}
+
+button.danger {
+  color: #c53030;
+  border-color: #e3a0a0;
+}
+
+button.danger:hover {
+  background: #fdecec;
+}
+
+/* Фильтры и статистика */
+.filters {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.filters input {
+  flex: 1;
+}
+
+.stats {
+  margin: 0 0 12px;
+  color: #444;
+}
+
+/* Таблица */
+table {
+  width: 100%;
+  border-collapse: collapse;
+  background: #fff;
+  border: 1px solid #ddd;
+}
+
+th,
+td {
+  padding: 8px 10px;
+  border-bottom: 1px solid #e5e5e5;
+  text-align: left;
+}
+
+th {
+  background: #1e3a5f;
+  color: #fff;
+  font-weight: 600;
+}
+
+tbody tr:nth-child(even) {
+  background: #f8f9fb;
+}
+
+tbody tr:hover {
+  background: #eef4fb;
+}
+
+td:last-child {
+  white-space: nowrap;
+}
+
+.error {
+  margin: 0;
+  color: #c53030;
+}
+
+.loading,
+.empty {
+  padding: 20px;
+  text-align: center;
+  color: #666;
+  background: #fff;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+}

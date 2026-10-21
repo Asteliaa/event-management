@@ -9,7 +9,7 @@ const today = new Date().toLocaleDateString('sv');
 
 function EventList() {
   // Список мероприятий хранится в localStorage
-  const [events, setEvents, loading, savedAt] = useLocalStorage('events', demoEvents);
+  const [events, setEvents, loading] = useLocalStorage('events', demoEvents);
   // Мероприятие, которое сейчас редактируется
   const [editingEvent, setEditingEvent] = useState(null);
   // Фильтр и сортировка
@@ -37,7 +37,7 @@ function EventList() {
   }
 
   if (loading) {
-    return <p>Загрузка...</p>;
+    return <p className="loading">Загрузка...</p>;
   }
 
   // Фильтрация и сортировка
@@ -82,13 +82,13 @@ function EventList() {
         </select>
       </div>
 
-      <p>
-        Всего: {events.length}, предстоящих: {upcoming}, прошедших: {events.length - upcoming},
-        мест: {totalSeats}
+      <p className="stats">
+        Всего: <b>{events.length}</b> · предстоящих: <b>{upcoming}</b> · прошедших:{' '}
+        <b>{events.length - upcoming}</b> · мест: <b>{totalSeats}</b>
       </p>
 
       {visible.length === 0 ? (
-        <p>Мероприятий не найдено</p>
+        <p className="empty">Мероприятий не найдено</p>
       ) : (
         <table>
           <thead>
@@ -109,7 +109,6 @@ function EventList() {
         </table>
       )}
 
-      {savedAt && <p className="saved">Сохранено в {savedAt.toLocaleTimeString('ru-RU')}</p>}
     </div>
   );
 }

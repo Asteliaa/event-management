@@ -28,7 +28,7 @@ function EventForm({ editingEvent, onSave, onCancel }) {
     <form className="event-form" onSubmit={handleSubmit}>
       <h2>{editingEvent ? 'Редактирование' : 'Добавить мероприятие'}</h2>
 
-      <label>
+      <label className="wide">
         Название
         <input name="title" value={form.title} onChange={handleChange} />
       </label>
@@ -48,15 +48,17 @@ function EventForm({ editingEvent, onSave, onCancel }) {
         Мест
         <input type="number" name="capacity" value={form.capacity} onChange={handleChange} />
       </label>
-      <label>
+      <label className="wide">
         Описание
         <input name="description" value={form.description} onChange={handleChange} />
       </label>
 
-      {error && <p className="error">{error}</p>}
+      {error && <p className="error wide">{error}</p>}
 
-      <button type="submit">{editingEvent ? 'Сохранить' : 'Добавить'}</button>
-      {editingEvent && <button type="button" onClick={onCancel}>Отмена</button>}
+      <div className="form-buttons">
+        <button type="submit" className="primary">{editingEvent ? 'Сохранить' : 'Добавить'}</button>
+        {editingEvent && <button type="button" onClick={onCancel}>Отмена</button>}
+      </div>
     </form>
   );
 }

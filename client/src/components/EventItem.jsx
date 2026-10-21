@@ -10,7 +10,7 @@ function EventItem({ event, onEdit, onDelete }) {
       <td>{event.description}</td>
       <td>
         <button onClick={() => onEdit(event)}>Изменить</button>
-        <button onClick={() => onDelete(event.id)}>Удалить</button>
+        <button className="danger" onClick={() => onDelete(event.id)}>Удалить</button>
       </td>
     </tr>
   );

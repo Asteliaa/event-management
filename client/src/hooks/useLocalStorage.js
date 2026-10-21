@@ -4,7 +4,6 @@ import { useEffect, useState } from 'react';
 export function useLocalStorage(key, initialValue) {
   const [value, setValue] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [savedAt, setSavedAt] = useState(null);
 
   // Загрузка при монтировании (имитация запроса к серверу 1 секунда)
   useEffect(() => {
@@ -33,7 +32,6 @@ export function useLocalStorage(key, initialValue) {
     if (loading) return;
     const timer = setTimeout(() => {
       localStorage.setItem(key, JSON.stringify(value));
-      setSavedAt(new Date());
     }, 500);
 
     return () => clearTimeout(timer);
@@ -41,5 +39,5 @@ export function useLocalStorage(key, initialValue) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [value]);
 
-  return [value, setValue, loading, savedAt];
+  return [value, setValue, loading];
 }

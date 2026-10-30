@@ -1,0 +1,81 @@
+# ЛР8: запуск всего приложения командой docker compose up --build
+# Переменные ${...} берутся из файла .env рядом с этим файлом (см. .env.example),
+# после :- указано значение по умолчанию
+name: event-management
+
+services:
+  mongo:
+    image: mongo:7
+    restart: unless-stopped
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_ROOT_USER:-admin}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_ROOT_PASSWORD:-secret}
+      MONGO_INITDB_DATABASE: event_management
+    volumes:
+      - mongo-data:/data/db          # данные БД сохраняются при пересоздании контейнера
+    networks:
+      - db
+    healthcheck:
+      test: ["CMD", "mongosh", "--quiet", "--eval", "db.adminCommand('ping').ok"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
+
+  backend:
+    build: .
+    image: event-management-backend
+    restart: unless-stopped
+    init: true                       # tini в роли PID 1: корректная обработка SIGTERM
+    environment:
+      PORT: 5000
+      MONGO_URI: mongodb://${MONGO_ROOT_USER:-admin}:${MONGO_ROOT_PASSWORD:-secret}@mongo:27017/event_management?authSource=admin
+      JWT_SECRET: ${JWT_SECRET:-change_me_to_a_long_random_string}
+      CLIENT_URL: http://localhost
+      SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-admin@events.local}
+      SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:-admin12345}
+    ports:
+      - "5000:5000"
+    depends_on:
+      mongo:
+        condition: service_healthy   # backend стартует, когда MongoDB отвечает на ping
+    networks:
+      - db
+      - web
+
+  frontend:
+    build: ./client
+    image: event-management-frontend
+    restart: unless-stopped
+    ports:
+      - "80:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    networks:
+      - web
+
+  mongo-express:
+    image: mongo-express:1
+    restart: unless-stopped
+    environment:
+      ME_CONFIG_MONGODB_URL: mongodb://${MONGO_ROOT_USER:-admin}:${MONGO_ROOT_PASSWORD:-secret}@mongo:27017/?authSource=admin
+      ME_CONFIG_BASICAUTH: "true"
+      ME_CONFIG_BASICAUTH_USERNAME: ${ME_USER:-admin}
+      ME_CONFIG_BASICAUTH_PASSWORD: ${ME_PASSWORD:-admin12345}
+    ports:
+      - "127.0.0.1:8081:8081"        # веб-интерфейс БД доступен только с этого компьютера
+    depends_on:
+      mongo:
+        condition: service_healthy
+    networks:
+      - db
+      - web
+
+networks:
+  web:                               # внешняя сеть: nginx, backend, mongo-express
+  db:
+    internal: true                   # внутренняя сеть без выхода наружу: MongoDB и те, кто к ней ходит
+
+volumes:
+  mongo-data:

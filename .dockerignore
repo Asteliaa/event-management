@@ -1,0 +1,15 @@
+node_modules
+npm-debug.log*
+coverage
+client
+tests
+postman
+.git
+.gitignore
+.claude
+.env
+.env.*
+!.env.example
+Dockerfile
+docker-compose*.yml
+*.md

@@ -2,6 +2,7 @@ require('dotenv').config();
 const http = require('http');
 const express = require('express');
 const cors = require('cors');
+const mongoose = require('mongoose');
 const eventRoutes = require('./routes/eventRoutes');
 const authRoutes = require('./routes/auth');
 const profileRoutes = require('./routes/profile');
@@ -14,6 +15,12 @@ const PORT = process.env.PORT || 3000;
 // CORS: разрешаем запросы от React-клиента (Vite, порт 5173)
 app.use(cors({ origin: process.env.CLIENT_URL || 'http://localhost:5173' }));
 app.use(express.json());
+
+// Проверка состояния для healthcheck в Docker (ЛР8): 200, если есть соединение с MongoDB
+app.get(['/health', '/api/health'], (req, res) => {
+    const db = mongoose.connection.readyState === 1 ? 'up' : 'down';
+    res.status(db === 'up' ? 200 : 503).json({ status: db === 'up' ? 'ok' : 'error', db, uptime: Math.round(process.uptime()) });
+});
 
 // Все маршруты API собраны в один роутер
 const api = express.Router();

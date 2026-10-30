@@ -1,5 +1,16 @@
 const { Event } = require('../models');
 const { sendError } = require('./eventController');
+const notify = require('../socket/notify');
+
+// Уведомление о регистрации получают участники чата мероприятия и администраторы
+const notifyRegistration = (name, event, registration) =>
+    notify.toRooms([notify.rooms.event(event.id), notify.rooms.admins], name, {
+        eventId: event.id,
+        title: event.title,
+        email: registration.email,
+        tickets: registration.tickets,
+        seatsLeft: event.seatsLeft
+    });
 
 // Изменять и отменять регистрацию может ее владелец или администратор
 const canManage = (user, registration) =>
@@ -35,7 +46,9 @@ const register = async (req, res) => {
         });
         await event.save();
 
-        res.status(201).json(event.registrations[event.registrations.length - 1]);
+        const registration = event.registrations[event.registrations.length - 1];
+        notifyRegistration('registration:created', event, registration);
+        res.status(201).json(registration);
     } catch (error) {
         sendError(res, error, "Ошибка при регистрации на мероприятие");
     }
@@ -95,6 +108,8 @@ const cancelRegistration = async (req, res) => {
         }
 
         await Event.updateOne({ _id: req.params.id }, { $pull: { registrations: { _id: req.params.regId } } });
+        event.registrations.pull(registration._id);
+        notifyRegistration('registration:cancelled', event, registration);
         res.status(204).send();
     } catch (error) {
         sendError(res, error, "Ошибка при отмене регистрации");

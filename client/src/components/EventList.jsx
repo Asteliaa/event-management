@@ -1,5 +1,7 @@
 import { useEffect, useState } from 'react';
-import { fetchEvents, addEvent, updateEvent, deleteEvent, getErrorMessage } from '../api.js';
+import {
+  fetchEvents, addEvent, updateEvent, deleteEvent, registerForEvent, getErrorMessage, toClient,
+} from '../api.js';
 import { useDebounce } from '../hooks/useDebounce.js';
 import { EVENT_TYPES } from '../data/eventTypes.js';
 import EventForm from './EventForm.jsx';
@@ -8,7 +10,7 @@ import EventItem from './EventItem.jsx';
 // Сегодняшняя дата в формате ГГГГ-ММ-ДД (для подсчета предстоящих)
 const today = new Date().toLocaleDateString('sv');
 
-function EventList({ isAdmin, onUnauthorized }) {
+function EventList({ isAdmin, isLoggedIn, socket, chatEventId, onChat, onNotify, onUnauthorized }) {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
@@ -48,6 +50,26 @@ function EventList({ isAdmin, onUnauthorized }) {
     return () => controller.abort();
   }, [debouncedSearch, typeFilter, reloadKey]);
 
+  // Синхронизация в реальном времени: изменения, сделанные в других окнах, приходят через Socket.IO
+  useEffect(() => {
+    if (!socket) return;
+    const onCreated = ({ event }) =>
+      // Если запись уже есть (добавлена оптимистично в этом окне), не дублируем
+      setEvents((prev) => (prev.some((e) => e.id === event.id) ? prev : [...prev, toClient(event)]));
+    const onUpdated = ({ event }) =>
+      setEvents((prev) => prev.map((e) => (e.id === event.id ? toClient(event) : e)));
+    const onDeleted = ({ id }) => setEvents((prev) => prev.filter((e) => e.id !== id));
+
+    socket.on('event:created', onCreated);
+    socket.on('event:updated', onUpdated);
+    socket.on('event:deleted', onDeleted);
+    return () => {
+      socket.off('event:created', onCreated);
+      socket.off('event:updated', onUpdated);
+      socket.off('event:deleted', onDeleted);
+    };
+  }, [socket]);
+
   useEffect(() => {
     document.title = `Мероприятия (${events.length})`;
   }, [events]);
@@ -66,8 +88,9 @@ function EventList({ isAdmin, onUnauthorized }) {
     try {
       // 2. Отправляем POST
       const saved = await addEvent(data);
-      // 3. Заменяем временную запись на ответ сервера (с настоящим id)
-      setEvents((prev) => prev.map((e) => (e.id === tempId ? saved : e)));
+      // 3. Заменяем временную запись на ответ сервера (с настоящим id);
+      // уведомление event:created могло прийти раньше ответа, поэтому убираем возможный дубль
+      setEvents((prev) => prev.filter((e) => e.id !== saved.id).map((e) => (e.id === tempId ? saved : e)));
     } catch (err) {
       // 4. Ошибка: убираем запись и показываем уведомление
       setEvents((prev) => prev.filter((e) => e.id !== tempId));
@@ -104,6 +127,16 @@ function EventList({ isAdmin, onUnauthorized }) {
     }
   }
 
+  // Регистрация на мероприятие; уведомление об успехе показывается во всплывающем окне
+  async function handleRegister(event) {
+    try {
+      await registerForEvent(event.id);
+      onNotify(`Вы записаны на «${event.title}»`, 'success');
+    } catch (err) {
+      showSaveError(err);
+    }
+  }
+
   // Сортировка на клиенте
   const visible = [...events].sort((a, b) => {
     if (sortBy === 'title') return a.title.localeCompare(b.title);
@@ -125,7 +158,10 @@ function EventList({ isAdmin, onUnauthorized }) {
           onCancel={() => setEditingEvent(null)}
         />
       ) : (
-        <p className="hint">Добавлять и изменять мероприятия может только администратор. Войдите, чтобы редактировать список.</p>
+        <p className="hint">
+          Добавлять и изменять мероприятия может только администратор.{' '}
+          {isLoggedIn ? 'Можно записаться на мероприятие и обсудить его в чате.' : 'Войдите, чтобы записаться и открыть чат.'}
+        </p>
       )}
 
       {notice && (
@@ -181,7 +217,7 @@ function EventList({ isAdmin, onUnauthorized }) {
                   <th>Дата</th>
                   <th>Мест</th>
                   <th>Описание</th>
-                  {isAdmin && <th></th>}
+                  {isLoggedIn && <th></th>}
                 </tr>
               </thead>
               <tbody>
@@ -190,8 +226,12 @@ function EventList({ isAdmin, onUnauthorized }) {
                     key={event.id}
                     event={event}
                     isAdmin={isAdmin}
+                    isLoggedIn={isLoggedIn}
+                    isChatOpen={event.id === chatEventId}
                     onEdit={setEditingEvent}
                     onDelete={handleDelete}
+                    onChat={onChat}
+                    onRegister={handleRegister}
                   />
                 ))}
               </tbody>

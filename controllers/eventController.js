@@ -1,5 +1,6 @@
 const mongoose = require('mongoose');
-const { Event } = require('../models');
+const { Event, Message } = require('../models');
+const notify = require('../socket/notify');
 
 // Поля, которые клиент может передать при создании и изменении
 const pickFields = ({ title, type, date, description, capacity, location, tags }) =>
@@ -92,6 +93,8 @@ const createEvent = async (req, res) => {
 
     try {
         const newEvent = await Event.create(pickFields(req.body));
+        // Уведомление в реальном времени: у всех клиентов мероприятие появится в списке
+        notify.toAll('event:created', { event: newEvent.toJSON(), by: req.user.email });
         res.status(201).json(newEvent);
     } catch (error) {
         sendError(res, error, "Ошибка при создании");
@@ -109,13 +112,15 @@ const updateEvent = async (req, res) => {
             return res.status(404).json({ message: "Мероприятие не найдено" });
         }
 
+        notify.toAll('event:updated', { event: updatedEvent.toJSON(), by: req.user.email });
         res.status(200).json(updatedEvent);
     } catch (error) {
         sendError(res, error, "Ошибка при обновлении");
     }
 };
 
-// Удаляет мероприятие вместе со всеми вложенными регистрациями и возвращает удаленный документ
+// Удаляет мероприятие вместе со всеми вложенными регистрациями и историей чата,
+// возвращает удаленный документ
 const deleteEvent = async (req, res) => {
     try {
         const deleted = await Event.findByIdAndDelete(req.params.id);
@@ -124,6 +129,8 @@ const deleteEvent = async (req, res) => {
             return res.status(404).json({ message: "Мероприятие не найдено" });
         }
 
+        await Message.deleteMany({ event: deleted._id });
+        notify.toAll('event:deleted', { id: deleted.id, title: deleted.title, by: req.user.email });
         res.status(200).json(deleted);
     } catch (error) {
         sendError(res, error, "Ошибка при удалении");

@@ -14,7 +14,7 @@ api.interceptors.request.use((config) => {
 });
 
 // Сервер хранит дату как timestamp, в интерфейсе нужен вид ГГГГ-ММ-ДД
-const toClient = (event) => ({ ...event, date: event.date ? event.date.slice(0, 10) : '' });
+export const toClient = (event) => ({ ...event, date: event.date ? event.date.slice(0, 10) : '' });
 
 // Данные формы → тело запроса
 const toServer = ({ title, type, date, capacity, description }) => ({
@@ -35,6 +35,10 @@ export const updateEvent = (id, event) =>
   api.put(`/events/${id}`, toServer(event)).then((res) => toClient(res.data));
 
 export const deleteEvent = (id) => api.delete(`/events/${id}`);
+
+// Регистрация текущего пользователя на мероприятие (1 билет)
+export const registerForEvent = (id) =>
+  api.post(`/events/${id}/registrations`, { tickets: 1 }).then((res) => res.data);
 
 // Текст ошибки для пользователя
 export function getErrorMessage(error) {

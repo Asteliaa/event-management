@@ -1,10 +1,12 @@
 require('dotenv').config();
+const http = require('http');
 const express = require('express');
 const cors = require('cors');
 const eventRoutes = require('./routes/eventRoutes');
 const authRoutes = require('./routes/auth');
 const profileRoutes = require('./routes/profile');
 const connectDB = require('./db');
+const createSocketServer = require('./socket');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -33,12 +35,15 @@ app.use((err, req, res, next) => {
     res.status(500).json({ error: "Внутренняя ошибка сервера" });
 });
 
-// Сервер начинает принимать запросы только после подключения к MongoDB
+// Сервер начинает принимать запросы только после подключения к MongoDB.
+// Express и Socket.IO работают на одном HTTP-сервере и одном порту
 if (require.main === module) {
     connectDB()
         .then(() => {
-            app.listen(PORT, () => {
-                console.log(`Сервер запущен на http://localhost:${PORT}`);
+            const server = http.createServer(app);
+            createSocketServer(server);
+            server.listen(PORT, () => {
+                console.log(`Сервер запущен на http://localhost:${PORT} (REST API и Socket.IO)`);
             });
         })
         .catch((err) => {

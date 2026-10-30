@@ -1,32 +1,26 @@
-'use strict';
-const {
-  Model
-} = require('sequelize');
-module.exports = (sequelize, DataTypes) => {
-  class User extends Model {
-    static associate(models) {
-      // define association here
-    }
-  }
-  User.init({
+const mongoose = require('mongoose');
+const toJSON = require('./toJSON');
+
+const userSchema = new mongoose.Schema({
     email: {
-      type: DataTypes.STRING,
-      allowNull: false,
-      unique: true
+        type: String,
+        required: true,
+        unique: true,          // уникальный индекс в коллекции users
+        lowercase: true,
+        trim: true
     },
-    passwordHash: {
-      type: DataTypes.STRING,
-      allowNull: false
-    },
-    role: {
-      type: DataTypes.STRING,
-      allowNull: false,
-      defaultValue: 'user',
-      validate: { isIn: [['user', 'admin']] }
+    passwordHash: { type: String, required: true },
+    role: { type: String, enum: ['user', 'admin'], default: 'user' }
+}, { timestamps: true, toJSON });
+
+// Каскадное удаление: вместе с пользователем удаляются его регистрации на мероприятия
+userSchema.post('findOneAndDelete', async (user) => {
+    if (user) {
+        await mongoose.model('Event').updateMany(
+            { 'registrations.user': user._id },
+            { $pull: { registrations: { user: user._id } } }
+        );
     }
-  }, {
-    sequelize,
-    modelName: 'User',
-  });
-  return User;
-};
+});
+
+module.exports = mongoose.model('User', userSchema);

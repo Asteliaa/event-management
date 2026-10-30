@@ -4,6 +4,7 @@ const cors = require('cors');
 const eventRoutes = require('./routes/eventRoutes');
 const authRoutes = require('./routes/auth');
 const profileRoutes = require('./routes/profile');
+const connectDB = require('./db');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
@@ -32,10 +33,18 @@ app.use((err, req, res, next) => {
     res.status(500).json({ error: "Внутренняя ошибка сервера" });
 });
 
+// Сервер начинает принимать запросы только после подключения к MongoDB
 if (require.main === module) {
-    app.listen(PORT, () => {
-        console.log(`Сервер запущен на http://localhost:${PORT}`);
-    });
+    connectDB()
+        .then(() => {
+            app.listen(PORT, () => {
+                console.log(`Сервер запущен на http://localhost:${PORT}`);
+            });
+        })
+        .catch((err) => {
+            console.error('MongoDB connection error:', err.message);
+            process.exit(1);
+        });
 }
 
 module.exports = app;

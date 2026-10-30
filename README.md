@@ -14,19 +14,50 @@ models/
 - `server.js` — точка входа и общие middleware
 - `routes/` — маршруты API
 - `controllers/` — обработчики запросов
-- `models/` — модели и временное хранилище данных
+- `models/` — модели Mongoose
 
-## Запуск (ЛР5)
+## ЛР6: MongoDB + Mongoose
+
+В ветке `lab26` хранение данных переведено с PostgreSQL/Sequelize на MongoDB
+(Atlas или локальная установка) с ODM Mongoose. Контракт API из ЛР1–ЛР5 сохранен,
+React-клиент работает без изменений (`_id` отдается как `id`).
+
+- `db.js` — подключение по `MONGO_URI`
+- `models/event.js` — мероприятие: вложенный объект `location`, массив тегов `tags`,
+  массив поддокументов `registrations` (регистрации участников), виртуальные поля
+  `seatsTaken`/`seatsLeft`, метод `hasSeats`, статический метод `findUpcomingByTag`
+- `models/user.js` — пользователь; при удалении его регистрации удаляются каскадно
+- `scripts/seed.js` — демонстрационные данные (`npm run seed`)
+
+| Метод и путь | Доступ | Что делает |
+|---|---|---|
+| `GET /api/events?search=&type=&tag=&city=` | все | список, фильтр по тегу (массив) и `location.city` (вложенное поле) |
+| `GET /api/events/stats` | все | агрегация: мероприятия, участники и билеты по типам |
+| `GET /api/events/:id` | все | мероприятие с регистрациями (`populate` пользователей) |
+| `POST /api/events` | admin | `Event.create` |
+| `PUT /api/events/:id` | admin | `findByIdAndUpdate` |
+| `DELETE /api/events/:id` | admin | `findByIdAndDelete`, возвращает удаленный документ |
+| `POST /api/events/:id/registrations` | user | регистрация (`push` во вложенный массив) |
+| `PATCH /api/events/:id/registrations/:regId` | владелец, admin | изменение элемента массива через `registrations.$` |
+| `DELETE /api/events/:id/registrations/:regId` | владелец, admin | удаление элемента массива (`$pull`) |
+| `DELETE /api/users/:id` | admin | удаление пользователя с каскадом по регистрациям |
+
+Коллекция запросов для Postman: `postman/ЛР6.postman_collection.json`.
+
+## Запуск (ЛР6)
 
 ```bash
 npm install
+cp .env.example .env # указать MONGO_URI и JWT_SECRET
+npm run seed         # демо-данные: admin@events.local / admin12345
 npm run dev          # сервер: http://localhost:3000 (API также по префиксу /api)
+npm test             # автотесты на временной MongoDB в памяти (mongodb-memory-server)
 cd client
 npm install
 cp .env.example .env
 npm run dev          # клиент: http://localhost:5173
 ```
 
-Переменные сервера (`.env`): `DATABASE_URL`, `JWT_SECRET`, необязательные `PORT`
+Переменные сервера (`.env`): `MONGO_URI`, `JWT_SECRET`, необязательные `PORT`
 (по умолчанию 3000) и `CLIENT_URL` (адрес клиента для CORS, по умолчанию
 `http://localhost:5173`). Подробнее о клиенте — в `client/README.md`.

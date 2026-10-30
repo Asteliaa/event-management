@@ -10,7 +10,7 @@ const register = async (req, res) => {
     }
 
     try {
-        const existing = await User.findOne({ where: { email } });
+        const existing = await User.findOne({ email: String(email).toLowerCase() });
         if (existing) {
             return res.status(409).json({ message: "Пользователь с таким email уже существует" });
         }
@@ -32,7 +32,7 @@ const login = async (req, res) => {
     }
 
     try {
-        const user = await User.findOne({ where: { email } });
+        const user = await User.findOne({ email: String(email).toLowerCase() });
         const valid = user && await bcrypt.compare(password, user.passwordHash);
         if (!valid) {
             return res.status(401).json({ message: "Неверный email или пароль" });
@@ -52,9 +52,7 @@ const login = async (req, res) => {
 
 const getProfile = async (req, res) => {
     try {
-        const user = await User.findByPk(req.user.id, {
-            attributes: ['id', 'email', 'role', 'createdAt']
-        });
+        const user = await User.findById(req.user.id).select('email role createdAt');
         if (!user) {
             return res.status(404).json({ message: "Пользователь не найден" });
         }
@@ -66,11 +64,27 @@ const getProfile = async (req, res) => {
 
 const getUsers = async (req, res) => {
     try {
-        const users = await User.findAll({ attributes: ['id', 'email', 'role', 'createdAt'] });
+        const users = await User.find().select('email role createdAt').sort({ createdAt: 1 });
         res.status(200).json(users);
     } catch (error) {
         res.status(500).json({ message: "Ошибка сервера", error: error.message });
     }
 };
 
-module.exports = { register, login, getProfile, getUsers };
+// DELETE /users/:id – удаление пользователя; его регистрации удаляет хук модели (каскад)
+const deleteUser = async (req, res) => {
+    try {
+        const user = await User.findByIdAndDelete(req.params.id).select('email role');
+        if (!user) {
+            return res.status(404).json({ message: "Пользователь не найден" });
+        }
+        res.status(200).json(user);
+    } catch (error) {
+        if (error.name === 'CastError') {
+            return res.status(400).json({ message: "Некорректный id", error: error.message });
+        }
+        res.status(500).json({ message: "Ошибка сервера", error: error.message });
+    }
+};
+
+module.exports = { register, login, getProfile, getUsers, deleteUser };

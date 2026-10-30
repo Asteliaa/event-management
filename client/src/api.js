@@ -1,6 +1,6 @@
 import axios from 'axios';
 
-// Адрес API берётся из client/.env (VITE_API_URL)
+// Адрес API берется из client/.env (VITE_API_URL)
 const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || 'http://localhost:3000/api',
   timeout: 10000,
@@ -24,7 +24,7 @@ const toServer = ({ title, type, date, capacity, description }) => ({
 export const login = (email, password) =>
   api.post('/auth/login', { email, password }).then((res) => res.data.token);
 
-// signal — сигнал AbortController для отмены запроса
+// signal – сигнал AbortController для отмены запроса
 export const fetchEvents = (params, signal) =>
   api.get('/events', { params, signal }).then((res) => res.data.map(toClient));
 
@@ -45,7 +45,7 @@ export function getErrorMessage(error) {
   return (data && (data.message || data.error)) || `Ошибка сервера (${status})`;
 }
 
-// Данные пользователя из JWT (id, email, role, exp); null, если токена нет или он истёк
+// Данные пользователя из JWT (id, email, role, exp); null, если токена нет или он истек
 export function readToken(token) {
   if (!token) return null;
   try {

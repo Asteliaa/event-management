@@ -7,7 +7,7 @@ const pickFields = ({ title, type, date, description, capacity }) =>
         Object.entries({ title, type, date, description, capacity }).filter(([, v]) => v !== undefined)
     );
 
-// GET /events?search=...&type=... — поиск по названию без учёта регистра и фильтр по типу
+// GET /events?search=...&type=... – поиск по названию без учета регистра и фильтр по типу
 const getEvents = async (req, res) => {
     const { search, type } = req.query;
     const where = {};

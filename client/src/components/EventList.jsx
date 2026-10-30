@@ -5,7 +5,7 @@ import { EVENT_TYPES } from '../data/eventTypes.js';
 import EventForm from './EventForm.jsx';
 import EventItem from './EventItem.jsx';
 
-// Сегодняшняя дата в формате ГГГГ-ММ-ДД (для подсчёта предстоящих)
+// Сегодняшняя дата в формате ГГГГ-ММ-ДД (для подсчета предстоящих)
 const today = new Date().toLocaleDateString('sv');
 
 function EventList({ isAdmin, onUnauthorized }) {
@@ -40,7 +40,7 @@ function EventList({ isAdmin, onUnauthorized }) {
         setLoading(false);
       })
       .catch((err) => {
-        if (controller.signal.aborted) return; // запрос отменён, это не ошибка
+        if (controller.signal.aborted) return; // запрос отменен, это не ошибка
         setError(getErrorMessage(err));
         setLoading(false);
       });
@@ -52,7 +52,7 @@ function EventList({ isAdmin, onUnauthorized }) {
     document.title = `Мероприятия (${events.length})`;
   }, [events]);
 
-  // Общая обработка ошибки сохранения: сообщение, а при 401 — выход
+  // Общая обработка ошибки сохранения: сообщение, а при 401 – выход
   function showSaveError(err) {
     setNotice(getErrorMessage(err));
     if (err.response && err.response.status === 401) onUnauthorized();

@@ -1,11 +1,16 @@
 import { useState } from 'react';
-import { EVENT_TYPES } from '../data/demoEvents.js';
+import { EVENT_TYPES } from '../data/eventTypes.js';
 
 const emptyForm = { title: '', type: 'conference', date: '', capacity: '', description: '' };
 
 function EventForm({ editingEvent, onSave, onCancel }) {
   // Значения полей формы
-  const [form, setForm] = useState(editingEvent ? { ...editingEvent } : emptyForm);
+  // (у записей с сервера capacity и description могут быть null)
+  const [form, setForm] = useState(
+    editingEvent
+      ? { ...editingEvent, capacity: editingEvent.capacity ?? '', description: editingEvent.description ?? '' }
+      : emptyForm
+  );
   const [error, setError] = useState('');
 
   function handleChange(e) {

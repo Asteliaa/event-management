@@ -17,7 +17,8 @@ module.exports = (sequelize, DataTypes) => {
     title: DataTypes.STRING,
     type: DataTypes.STRING,
     date: DataTypes.DATE,
-    description: DataTypes.STRING
+    description: DataTypes.STRING,
+    capacity: DataTypes.INTEGER
   }, {
     sequelize,
     modelName: 'Event',

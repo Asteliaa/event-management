@@ -1,5 +1,6 @@
 const { tokenFor } = require('./helpers');
 const request = require('supertest');
+const { Op } = require('sequelize');
 
 jest.mock('../models', () => ({
     User: { findOne: jest.fn(), create: jest.fn(), findByPk: jest.fn(), findAll: jest.fn() },
@@ -134,5 +135,35 @@ describe('обработчик ошибок', () => {
         const res = await request(app).post('/auth/login').set('Content-Type', 'application/json').send('{bad');
         expect(res.status).toBe(500);
         spy.mockRestore();
+    });
+});
+
+describe('ЛР5: поиск, префикс /api, CORS', () => {
+    it('GET /api/events?search=&type= передаёт условия в findAll', async () => {
+        Event.findAll.mockResolvedValue([]);
+        const res = await request(app).get('/api/events?search=react&type=webinar');
+        expect(res.status).toBe(200);
+        const { where } = Event.findAll.mock.calls[0][0];
+        expect(where.type).toBe('webinar');
+        expect(where.title[Op.iLike]).toBe('%react%');
+    });
+
+    it('без параметров поиска условие пустое', async () => {
+        Event.findAll.mockResolvedValue([]);
+        await request(app).get('/api/events');
+        expect(Event.findAll.mock.calls[0][0].where).toEqual({});
+    });
+
+    it('PUT передаёт в update только разрешённые поля', async () => {
+        Event.update.mockResolvedValue([1]);
+        Event.findByPk.mockResolvedValue({ id: 1 });
+        await request(app).put('/api/events/1').set('Authorization', admin()).send({ title: 'X', capacity: 5, id: 99, createdAt: 'x' });
+        expect(Event.update.mock.calls[0][0]).toEqual({ title: 'X', capacity: 5 });
+    });
+
+    it('ответ содержит заголовок CORS для клиента', async () => {
+        Event.findAll.mockResolvedValue([]);
+        const res = await request(app).get('/api/events').set('Origin', 'http://localhost:5173');
+        expect(res.headers['access-control-allow-origin']).toBe('http://localhost:5173');
     });
 });

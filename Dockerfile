@@ -7,8 +7,7 @@ ENV NODE_ENV=production
 # Сначала только package*.json: слой с зависимостями пересобирается,
 # только когда они меняются, а не при каждой правке кода
 COPY package*.json ./
-RUN if [ -f package-lock.json ]; then npm ci --omit=dev; else npm install --omit=dev; fi \
-    && npm cache clean --force
+RUN npm ci --omit=dev && npm cache clean --force
 
 COPY . .
 

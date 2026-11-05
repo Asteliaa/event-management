@@ -4,7 +4,7 @@ FROM node:22-alpine AS builder
 
 WORKDIR /app
 COPY package*.json ./
-RUN if [ -f package-lock.json ]; then npm ci; else npm install; fi
+RUN npm ci
 
 COPY . .
 # В браузере API доступен через тот же nginx по относительному адресу /api

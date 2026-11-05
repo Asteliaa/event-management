@@ -1,17 +1,31 @@
 # Event Management
 
-Разработка платформы для управления мероприятиями (конференции, вебинары, встречи) с системой регистрации и напоминаний
+Платформа для управления мероприятиями (конференции, вебинары, встречи).
 
-## Структура
+## ЛР3: аутентификация и авторизация
 
-```text
-server.js
-routes/
-controllers/
-models/
+JWT, хеширование паролей через bcrypt. Дополнительный механизм: роли (RBAC).
+
+```bash
+npm install
+cp .env.example .env   # указать DATABASE_URL и JWT_SECRET
+npm run db:migrate
+npm run db:seed
+npm run dev            # http://localhost:3000
+npm test               # автотесты, база не нужна
 ```
 
-- `server.js` — точка входа и общие middleware
-- `routes/` — маршруты API
-- `controllers/` — обработчики запросов
-- `models/` — модели и временное хранилище данных
+| Метод и путь | Доступ | Что делает |
+|---|---|---|
+| `POST /auth/register` | все | регистрация, 201 или 409 |
+| `POST /auth/login` | все | вход, JWT на 1 час |
+| `GET /profile` | с токеном | профиль, без токена 401 |
+| `GET /users` | admin | список пользователей |
+| `GET /events`, `GET /events/:id` | все | чтение мероприятий |
+| `POST`, `PUT`, `DELETE /events` | admin | изменение мероприятий |
+
+Роль администратора выдаётся в базе после регистрации:
+
+```sql
+UPDATE "Users" SET role = 'admin' WHERE email = '...';
+```

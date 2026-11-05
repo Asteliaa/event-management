@@ -4,8 +4,6 @@ import { EVENT_TYPES } from '../data/eventTypes.js';
 const emptyForm = { title: '', type: 'conference', date: '', capacity: '', description: '' };
 
 function EventForm({ editingEvent, onSave, onCancel }) {
-  // Значения полей формы
-  // (у записей с сервера capacity и description могут быть null)
   const [form, setForm] = useState(
     editingEvent
       ? { ...editingEvent, capacity: editingEvent.capacity ?? '', description: editingEvent.description ?? '' }
@@ -17,7 +15,6 @@ function EventForm({ editingEvent, onSave, onCancel }) {
     setForm((prev) => ({ ...prev, [e.target.name]: e.target.value }));
   }
 
-  // Срабатывает по кнопке и по Enter в любом поле
   function handleSubmit(e) {
     e.preventDefault();
     if (!form.title.trim() || !form.date || Number(form.capacity) < 1) {

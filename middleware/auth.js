@@ -5,7 +5,7 @@ const authenticate = (req, res, next) => {
     const [scheme, token] = header.split(' ');
 
     if (scheme !== 'Bearer' || !token) {
-        return res.status(401).json({ message: "Требуется авторизация: заголовок Authorization: Bearer <token>" });
+        return res.status(401).json({ message: "Требуется авторизация" });
     }
 
     try {

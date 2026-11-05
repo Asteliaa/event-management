@@ -20,6 +20,9 @@ models/
 
 ```bash
 npm install
+cp .env.example .env # указать DATABASE_URL и JWT_SECRET
+npm run db:migrate
+npm run db:seed
 npm run dev          # сервер: http://localhost:3000 (API также по префиксу /api)
 cd client
 npm install

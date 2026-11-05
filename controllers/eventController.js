@@ -22,14 +22,14 @@ const getEventById = async (req, res) => {
 };
 
 const createEvent = async (req, res) => {
-    const { title, type, date, description } = req.body;
+    const { title, type, date, description, capacity } = req.body;
     
     if (!title || !type || !date) {
         return res.status(400).json({ message: "Заполните обязательные поля: title, type, date" });
     }
 
     try {
-        const newEvent = await Event.create({ title, type, date, description });
+        const newEvent = await Event.create({ title, type, date, description, capacity });
         res.status(201).json(newEvent);
     } catch (error) {
         res.status(500).json({ message: "Ошибка при создании", error });

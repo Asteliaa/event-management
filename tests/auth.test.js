@@ -185,10 +185,10 @@ describe('общее поведение', () => {
         expect((await request(app).get('/nope')).status).toBe(404);
     });
 
-    it('500 при некорректном JSON', async () => {
+    it('400 при некорректном JSON', async () => {
         const spy = jest.spyOn(console, 'error').mockImplementation(() => {});
         const res = await request(app).post('/auth/login').set('Content-Type', 'application/json').send('{bad');
-        expect(res.status).toBe(500);
+        expect(res.status).toBe(400);
         spy.mockRestore();
     });
 });

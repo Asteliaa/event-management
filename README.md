@@ -14,7 +14,7 @@ models/
 - `server.js` — точка входа и общие middleware
 - `routes/` — маршруты API
 - `controllers/` — обработчики запросов
-- `models/` — модели и временное хранилище данных
+- `models/` — модели Sequelize
 
 ## Запуск (ЛР5)
 

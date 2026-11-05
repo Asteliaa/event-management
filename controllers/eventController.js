@@ -1,11 +1,13 @@
 const { Op } = require('sequelize');
 const { Event } = require('../models');
 
+// Поля, которые клиент может передать при создании и изменении
 const pickFields = ({ title, type, date, description, capacity }) =>
     Object.fromEntries(
         Object.entries({ title, type, date, description, capacity }).filter(([, v]) => v !== undefined)
     );
 
+// GET /events?search=...&type=... – поиск по названию без учета регистра и фильтр по типу
 const getEvents = async (req, res) => {
     const { search, type } = req.query;
     const where = {};

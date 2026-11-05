@@ -4,6 +4,7 @@ import EventList from './components/EventList.jsx';
 import LoginForm from './components/LoginForm.jsx';
 
 function App() {
+  // Токен хранится в localStorage, чтобы вход сохранялся после перезагрузки
   const [token, setToken] = useState(() => localStorage.getItem('token'));
   const user = readToken(token);
 

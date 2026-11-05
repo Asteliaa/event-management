@@ -5,21 +5,27 @@ import { EVENT_TYPES } from '../data/eventTypes.js';
 import EventForm from './EventForm.jsx';
 import EventItem from './EventItem.jsx';
 
+// Сегодняшняя дата в формате ГГГГ-ММ-ДД (для подсчета предстоящих)
 const today = new Date().toLocaleDateString('sv');
 
 function EventList({ isAdmin, onUnauthorized }) {
   const [events, setEvents] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  // Уведомление об ошибке при сохранении (после отката)
   const [notice, setNotice] = useState('');
   const [editingEvent, setEditingEvent] = useState(null);
+  // Поиск выполняется на сервере, запрос уходит через 500 мс после ввода
   const [search, setSearch] = useState('');
   const debouncedSearch = useDebounce(search.trim(), 500);
   const [typeFilter, setTypeFilter] = useState('all');
   const [sortBy, setSortBy] = useState('date');
+  // Увеличивается по кнопке «Повторить», чтобы перезапустить загрузку
   const [reloadKey, setReloadKey] = useState(0);
 
+  // Загрузка списка (GET /events?search=&type=)
   useEffect(() => {
+    // Предыдущий запрос отменяется, если фильтр изменился или компонент размонтирован
     const controller = new AbortController();
     setLoading(true);
     setError('');
@@ -34,7 +40,7 @@ function EventList({ isAdmin, onUnauthorized }) {
         setLoading(false);
       })
       .catch((err) => {
-        if (controller.signal.aborted) return;
+        if (controller.signal.aborted) return; // запрос отменен, это не ошибка
         setError(getErrorMessage(err));
         setLoading(false);
       });
@@ -46,23 +52,30 @@ function EventList({ isAdmin, onUnauthorized }) {
     document.title = `Мероприятия (${events.length})`;
   }, [events]);
 
+  // Общая обработка ошибки сохранения: сообщение, а при 401 – выход
   function showSaveError(err) {
     setNotice(getErrorMessage(err));
     if (err.response && err.response.status === 401) onUnauthorized();
   }
 
+  // Добавление с оптимистичным обновлением
   async function handleAdd(data) {
     const tempId = Date.now();
+    // 1. Сразу показываем запись с временным id
     setEvents((prev) => [...prev, { ...data, id: tempId, pending: true }]);
     try {
+      // 2. Отправляем POST
       const saved = await addEvent(data);
+      // 3. Заменяем временную запись на ответ сервера (с настоящим id)
       setEvents((prev) => prev.map((e) => (e.id === tempId ? saved : e)));
     } catch (err) {
+      // 4. Ошибка: убираем запись и показываем уведомление
       setEvents((prev) => prev.filter((e) => e.id !== tempId));
       showSaveError(err);
     }
   }
 
+  // Редактирование с оптимистичным обновлением
   async function handleUpdate(data) {
     const previous = editingEvent;
     setEditingEvent(null);
@@ -71,11 +84,13 @@ function EventList({ isAdmin, onUnauthorized }) {
       const saved = await updateEvent(previous.id, data);
       setEvents((prev) => prev.map((e) => (e.id === previous.id ? saved : e)));
     } catch (err) {
+      // Откат к прежней версии записи
       setEvents((prev) => prev.map((e) => (e.id === previous.id ? previous : e)));
       showSaveError(err);
     }
   }
 
+  // Удаление с оптимистичным обновлением
   async function handleDelete(event) {
     if (editingEvent && editingEvent.id === event.id) setEditingEvent(null);
     const index = events.findIndex((e) => e.id === event.id);
@@ -83,17 +98,20 @@ function EventList({ isAdmin, onUnauthorized }) {
     try {
       await deleteEvent(event.id);
     } catch (err) {
+      // Возвращаем запись на прежнее место
       setEvents((prev) => [...prev.slice(0, index), event, ...prev.slice(index)]);
       showSaveError(err);
     }
   }
 
+  // Сортировка на клиенте
   const visible = [...events].sort((a, b) => {
     if (sortBy === 'title') return a.title.localeCompare(b.title);
     if (sortBy === 'capacity') return (b.capacity || 0) - (a.capacity || 0);
     return a.date.localeCompare(b.date);
   });
 
+  // Статистика по загруженному списку
   const upcoming = events.filter((e) => e.date >= today).length;
   const totalSeats = events.reduce((sum, e) => sum + (e.capacity || 0), 0);
 

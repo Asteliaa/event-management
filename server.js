@@ -8,14 +8,18 @@ const profileRoutes = require('./routes/profile');
 const app = express();
 const PORT = process.env.PORT || 3000;
 
+// CORS: разрешаем запросы от React-клиента (Vite, порт 5173)
 app.use(cors({ origin: process.env.CLIENT_URL || 'http://localhost:5173' }));
 app.use(express.json());
 
+// Все маршруты API собраны в один роутер
 const api = express.Router();
 api.use('/auth', authRoutes);
 api.use('/', profileRoutes);
 api.use('/events', eventRoutes);
 
+// Клиент обращается по префиксу /api (VITE_API_URL=http://localhost:3000/api),
+// старые адреса без префикса (ЛР1–ЛР3) тоже работают
 app.use('/api', api);
 app.use('/', api);
 

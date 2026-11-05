@@ -3,7 +3,6 @@ npm-debug.log*
 coverage
 client
 tests
-postman
 .git
 .gitignore
 .claude

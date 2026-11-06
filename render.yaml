@@ -1,0 +1,20 @@
+# Render Blueprint: backend (Node.js) – https://render.com/docs/blueprint-spec
+# База данных – MongoDB Atlas (бесплатный кластер M0), строка подключения задается в MONGO_URI
+services:
+  - type: web
+    name: eventhub-api
+    runtime: node
+    plan: free
+    region: frankfurt
+    buildCommand: npm ci --omit=dev
+    startCommand: node server.js
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: MONGO_URI
+        sync: false
+      - key: JWT_SECRET
+        generateValue: true
+      - key: CLIENT_URL
+        sync: false        # адрес фронтенда на Netlify, например https://eventhub.netlify.app

@@ -1,0 +1,12 @@
+# Netlify: сборка React-клиента (base directory = client)
+[build]
+  command = "npm run build"
+  publish = "dist"
+
+# VITE_API_URL задается в настройках сайта Netlify: https://eventhub-api.onrender.com/api/v1
+
+# SPA: все пути отдаются index.html, маршрутизацию выполняет React Router
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

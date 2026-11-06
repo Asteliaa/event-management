@@ -1,4 +1,4 @@
-# Backend: Node.js/Express + Socket.IO (ЛР8)
+# Backend: Node.js/Express + Socket.IO
 FROM node:22-alpine
 
 WORKDIR /app

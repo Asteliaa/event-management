@@ -1,115 +1,59 @@
-import { useCallback, useEffect, useState } from 'react';
-import { readToken } from './api.js';
-import { useSocket } from './hooks/useSocket.js';
-import EventList from './components/EventList.jsx';
-import EventChat from './components/EventChat.jsx';
-import LoginForm from './components/LoginForm.jsx';
-import Notifications from './components/Notifications.jsx';
+import { lazy } from 'react';
+import { Route, Routes } from 'react-router';
+import Layout from './components/layout/Layout.jsx';
+import ProtectedRoute, { GuestRoute } from './routes/ProtectedRoute.jsx';
+import HomePage from './pages/HomePage.jsx';
+import CatalogPage from './pages/CatalogPage.jsx';
+import EventPage from './pages/EventPage.jsx';
+import { LoginPage, RegisterPage } from './pages/AuthPages.jsx';
+import ProfileLayout, { MyFavorites, MyRegistrations, MyReminders, ProfileSettings } from './pages/ProfilePage.jsx';
+import { AboutPage, NotFoundPage } from './pages/MiscPages.jsx';
 
-let nextId = 1;
+// Страницы администратора загружаются отдельными частями сборки (code splitting)
+const AdminLayout = lazy(() => import('./pages/admin/AdminLayout.jsx'));
+const Dashboard = lazy(() => import('./pages/admin/Dashboard.jsx'));
+const AdminEvents = lazy(() => import('./pages/admin/AdminEvents.jsx'));
+const EventFormPage = lazy(() => import('./pages/admin/EventFormPage.jsx'));
+const AdminCategories = lazy(() => import('./pages/admin/AdminCategories.jsx'));
+const AdminUsers = lazy(() => import('./pages/admin/AdminUsers.jsx'));
 
-function App() {
-  // Токен хранится в localStorage, чтобы вход сохранялся после перезагрузки
-  const [token, setToken] = useState(() => localStorage.getItem('token'));
-  const user = readToken(token);
-  // Соединение Socket.IO открывается только для вошедшего пользователя
-  const { socket, connected, error: socketError } = useSocket(user ? token : null);
-  const [online, setOnline] = useState([]);
-  const [notifications, setNotifications] = useState([]);
-  const [chatEvent, setChatEvent] = useState(null);
-
-  const notify = useCallback((text, kind = 'info') => {
-    setNotifications((prev) => [...prev.slice(-4), { id: nextId++, text, kind }]);
-  }, []);
-  const closeNotification = useCallback((id) => {
-    setNotifications((prev) => prev.filter((n) => n.id !== id));
-  }, []);
-
-  // Уведомления от сервера в реальном времени
-  useEffect(() => {
-    if (!socket) return;
-    const me = readToken(token).email;
-    const handlers = {
-      'users:online': setOnline,
-      'user:connected': (u) => notify(`${u.email} в сети`, 'success'),
-      'user:disconnected': (u) => notify(`${u.email} не в сети`),
-      'event:created': ({ event, by }) => by !== me && notify(`Новое мероприятие «${event.title}» (${by})`),
-      'event:updated': ({ event, by }) => by !== me && notify(`Изменено мероприятие «${event.title}» (${by})`),
-      'event:deleted': ({ id, title, by }) => {
-        setChatEvent((current) => (current && current.id === id ? null : current));
-        if (by !== me) notify(`Удалено мероприятие «${title}» (${by})`, 'warning');
-      },
-      'registration:created': ({ email, title, seatsLeft }) =>
-        email !== me && notify(`${email}: регистрация на «${title}», осталось мест: ${seatsLeft ?? 'без ограничений'}`),
-      'registration:cancelled': ({ email, title }) =>
-        email !== me && notify(`${email}: регистрация на «${title}» отменена`, 'warning'),
-    };
-    Object.entries(handlers).forEach(([name, fn]) => socket.on(name, fn));
-    return () => Object.entries(handlers).forEach(([name, fn]) => socket.off(name, fn));
-  }, [socket, token, notify]);
-
-  function handleLogin(newToken) {
-    localStorage.setItem('token', newToken);
-    setToken(newToken);
-  }
-
-  function handleLogout() {
-    localStorage.removeItem('token');
-    setToken(null);
-    setChatEvent(null);
-    setOnline([]);
-  }
-
+// Карта маршрутов приложения: публичные, только для гостей, для вошедших и для администраторов
+export default function App() {
   return (
-    <div className={`container ${chatEvent ? 'with-chat' : ''}`}>
-      <header className="header">
-        <div>
-          <h1>Мероприятия</h1>
-          <p className="subtitle">Список конференций, вебинаров и встреч</p>
-        </div>
-        {user ? (
-          <div className="user">
-            <span
-              className={`status ${connected ? 'online' : 'offline'}`}
-              title={online.map((u) => u.email).join('\n')}
-            >
-              {connected ? `онлайн: ${online.length}` : `нет связи${socketError ? ` (${socketError})` : ''}`}
-            </span>
-            {user.email} ({user.role})
-            <button onClick={handleLogout}>Выйти</button>
-          </div>
-        ) : (
-          <LoginForm onLogin={handleLogin} />
-        )}
-      </header>
+    <Routes>
+      <Route element={<Layout />}>
+        <Route index element={<HomePage />} />
+        <Route path="events" element={<CatalogPage />} />
+        <Route path="events/:id" element={<EventPage />} />
+        <Route path="about" element={<AboutPage />} />
 
-      <div className="layout">
-        <main>
-          <EventList
-            isAdmin={user?.role === 'admin'}
-            isLoggedIn={Boolean(user)}
-            socket={socket}
-            chatEventId={chatEvent?.id}
-            onChat={setChatEvent}
-            onNotify={notify}
-            onUnauthorized={handleLogout}
-          />
-        </main>
-        {chatEvent && socket && (
-          <EventChat
-            key={chatEvent.id}
-            socket={socket}
-            connected={connected}
-            event={chatEvent}
-            user={user}
-            onClose={() => setChatEvent(null)}
-          />
-        )}
-      </div>
+        <Route element={<GuestRoute />}>
+          <Route path="login" element={<LoginPage />} />
+          <Route path="register" element={<RegisterPage />} />
+        </Route>
 
-      <Notifications items={notifications} onClose={closeNotification} />
-    </div>
+        <Route element={<ProtectedRoute />}>
+          <Route path="profile" element={<ProfileLayout />}>
+            <Route index element={<MyRegistrations />} />
+            <Route path="favorites" element={<MyFavorites />} />
+            <Route path="reminders" element={<MyReminders />} />
+            <Route path="settings" element={<ProfileSettings />} />
+          </Route>
+        </Route>
+
+        <Route element={<ProtectedRoute adminOnly />}>
+          <Route path="admin" element={<AdminLayout />}>
+            <Route index element={<Dashboard />} />
+            <Route path="events" element={<AdminEvents />} />
+            <Route path="events/new" element={<EventFormPage />} />
+            <Route path="events/:id/edit" element={<EventFormPage />} />
+            <Route path="categories" element={<AdminCategories />} />
+            <Route path="users" element={<AdminUsers />} />
+          </Route>
+        </Route>
+
+        <Route path="*" element={<NotFoundPage />} />
+      </Route>
+    </Routes>
   );
 }
-
-export default App;

@@ -1,4 +1,4 @@
-# ЛР8: запуск всего приложения командой docker compose up --build
+# Запуск всего приложения: docker compose up --build, демо-данные: docker compose exec backend npm run seed
 # Переменные ${...} берутся из файла .env рядом с этим файлом (см. .env.example).
 # Пароли и секреты в репозитории не хранятся: без них (${VAR:?...}) Compose не запустится
 name: event-management

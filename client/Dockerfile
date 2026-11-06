@@ -1,4 +1,4 @@
-# Frontend: многоэтапная сборка (ЛР8)
+# Frontend: многоэтапная сборка
 # Этап 1: сборка React-приложения (Vite)
 FROM node:22-alpine AS builder
 
@@ -8,7 +8,7 @@ RUN npm ci
 
 COPY . .
 # В браузере API доступен через тот же nginx по относительному адресу /api
-ARG VITE_API_URL=/api
+ARG VITE_API_URL=/api/v1
 ENV VITE_API_URL=$VITE_API_URL
 RUN npm run build
 

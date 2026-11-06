@@ -1,0 +1,5 @@
+/* Точка входа стилей: токены → база → компоненты → страницы и адаптивность */
+@import './tokens.css';
+@import './base.css';
+@import './components.css';
+@import './layout.css';

@@ -1,13 +1,11 @@
 import { useEffect, useState } from 'react';
 
-// Возвращает значение, которое обновляется только после паузы delay мс
-export function useDebounce(value, delay) {
+// Значение обновляется только через delay мс после последнего изменения (поиск при вводе)
+export function useDebounce(value, delay = 400) {
   const [debounced, setDebounced] = useState(value);
-
   useEffect(() => {
     const timer = setTimeout(() => setDebounced(value), delay);
     return () => clearTimeout(timer);
   }, [value, delay]);
-
   return debounced;
 }

@@ -32,8 +32,8 @@ export default function Header() {
     <header className="header">
       <div className="container header__inner">
         <Link to="/" className="logo">
-          <span className="logo__icon"><CalendarHeart size={22} /></span>
-          <span>Event<b>Hub</b></span>
+          <span className="logo__mark" aria-hidden="true"><CalendarHeart size={20} /></span>
+          EventHub
         </Link>
 
         <nav className={`nav ${menuOpen ? 'is-open' : ''}`} aria-label="Основная навигация">

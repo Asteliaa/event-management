@@ -6,7 +6,7 @@ import { useDocumentTitle } from '../../hooks/useDocumentTitle.js';
 import { categoriesApi, eventsApi } from '../../api/index.js';
 import { getErrorMessage, getFieldErrors } from '../../api/client.js';
 import { useNotifications } from '../../context/NotificationContext.jsx';
-import EventCover from '../../components/events/EventCover.jsx';
+import EventRow from '../../components/events/EventCard.jsx';
 import { Field, Spinner } from '../../components/ui/index.jsx';
 import { TYPE_LABELS, toLocalInput } from '../../utils/format.js';
 
@@ -129,14 +129,13 @@ export default function EventFormPage() {
             </div>
           )}
           <Field label="Теги" hint="Через запятую: react, frontend" error={errors.tags}><input value={form.tags} onChange={set('tags')} /></Field>
-          <Field label="Обложка (ссылка на изображение)" hint="Пусто – градиент в цвете категории" error={errors.coverUrl}>
+          <Field label="Обложка (ссылка на изображение)" hint="Необязательно" error={errors.coverUrl}>
             <input value={form.coverUrl} onChange={set('coverUrl')} placeholder="https://" />
           </Field>
         </div>
         <aside className="form-preview">
-          <p className="muted small">Предпросмотр обложки</p>
-          <EventCover event={preview} />
-          <h3>{form.title || 'Название мероприятия'}</h3>
+          <p className="muted small">Так мероприятие будет выглядеть в программе</p>
+          <div className="agenda"><EventRow event={{ ...preview, title: form.title || 'Название мероприятия', seatsTaken: 0, seatsLeft: preview.capacity }} /></div>
         </aside>
       </div>
     </form>

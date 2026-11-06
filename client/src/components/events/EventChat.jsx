@@ -116,7 +116,7 @@ export default function EventChat({ eventId }) {
           <p key={m.id} className="chat__system">{m.text}</p>
         ) : (
           <div key={m.id} className={`chat__msg ${m.user === user.id ? 'is-own' : ''}`}>
-            <span className="chat__meta">{m.author} · {formatTime(m.createdAt)}</span>
+            <span className="chat__meta"><b>{m.author}</b> <time>{formatTime(m.createdAt)}</time></span>
             <span className="chat__text">{m.text}</span>
           </div>
         )))}

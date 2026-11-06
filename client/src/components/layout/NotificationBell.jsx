@@ -40,7 +40,7 @@ export default function NotificationBell() {
                   <Link to={`/events/${r.event?.id}`} onClick={() => { markRead(r.id); setOpen(false); }}>
                     <span className="notif__title">{r.event?.title || 'Мероприятие удалено'}</span>
                     <span className="notif__meta">
-                      Напоминание {formatOffset(r.offsetMinutes)} · начало {r.event && formatDateTime(r.event.startsAt)}
+                      Начало {r.event && formatDateTime(r.event.startsAt)}
                     </span>
                   </Link>
                 </li>

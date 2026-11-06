@@ -52,7 +52,7 @@ export default function ReminderPanel({ event, reminders, onChange }) {
             <span className="reminder__icon">{r.status === 'sent' ? <Check size={16} /> : <BellRing size={16} />}</span>
             <span className="reminder__text">
               <b>{formatOffset(r.offsetMinutes)}</b>
-              <small>{r.status === 'sent' ? 'отправлено' : formatDateTime(r.remindAt)}{r.kind === 'auto' && ' · авто'}</small>
+              <small>{r.status === 'sent' ? 'отправлено' : formatDateTime(r.remindAt)}{r.kind === 'auto' && ', автоматически'}</small>
             </span>
             {r.status === 'pending' && (
               <button type="button" className="icon-btn icon-btn--sm" onClick={() => remove(r.id)} aria-label="Удалить напоминание">

@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router';
-import { CalendarHeart, Eye, EyeOff } from 'lucide-react';
+import { Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useNotifications } from '../context/NotificationContext.jsx';
 import { useDocumentTitle } from '../hooks/useDocumentTitle.js';
@@ -68,7 +68,6 @@ function AuthForm({ mode }) {
   return (
     <div className="auth">
       <form className="card auth__card" onSubmit={handleSubmit} noValidate>
-        <div className="auth__logo"><CalendarHeart size={28} /></div>
         <h1>{isRegister ? 'Создать аккаунт' : 'Вход в EventHub'}</h1>
         <p className="muted center">{isRegister ? 'Регистрируйтесь на мероприятия и получайте напоминания' : 'Рады видеть вас снова'}</p>
 
@@ -94,7 +93,7 @@ function AuthForm({ mode }) {
             ? <>Уже есть аккаунт? <Link to="/login" state={location.state}>Войти</Link></>
             : <>Нет аккаунта? <Link to="/register" state={location.state}>Зарегистрироваться</Link></>}
         </p>
-        {!isRegister && <p className="demo-hint">Демо: admin@events.local / admin12345 · anna@events.local / user12345</p>}
+        {!isRegister && <p className="demo-hint">Для проверки: admin@events.local, пароль admin12345 (администратор) или anna@events.local, пароль user12345.</p>}
       </form>
     </div>
   );

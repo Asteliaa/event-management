@@ -1,30 +1,25 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router';
-import { ArrowRight, BellRing, CalendarCheck, Mic, MonitorPlay, Search, Users } from 'lucide-react';
+import { Search } from 'lucide-react';
 import { useFetch } from '../hooks/useFetch.js';
 import { useDocumentTitle } from '../hooks/useDocumentTitle.js';
 import { categoriesApi, eventsApi } from '../api/index.js';
-import EventCard, { EventCardSkeleton } from '../components/events/EventCard.jsx';
+import EventRow, { EventRowSkeleton } from '../components/events/EventCard.jsx';
 import { ErrorState } from '../components/ui/index.jsx';
 import { plural } from '../utils/format.js';
 
-const STEPS = [
-  { icon: Search, title: 'Найдите мероприятие', text: 'Фильтры по формату, категории, городу и дате помогут выбрать интересное.' },
-  { icon: CalendarCheck, title: 'Зарегистрируйтесь', text: 'Одна кнопка – и место за вами. Счетчик мест обновляется сразу.' },
-  { icon: BellRing, title: 'Получите напоминание', text: 'Напомним за сутки автоматически, а еще – когда вам удобно.' },
-];
-
 const FORMATS = [
-  { type: 'conference', icon: Mic, title: 'Конференции', text: 'Доклады экспертов и нетворкинг' },
-  { type: 'webinar', icon: MonitorPlay, title: 'Вебинары', text: 'Онлайн из любой точки мира' },
-  { type: 'meeting', icon: Users, title: 'Встречи', text: 'Камерные воркшопы и круглые столы' },
+  { type: 'conference', title: 'Конференции', text: 'Доклады, секции и выставка компаний' },
+  { type: 'webinar', title: 'Вебинары', text: 'Онлайн-трансляции с вопросами спикеру' },
+  { type: 'meeting', title: 'Встречи', text: 'Воркшопы и круглые столы до 40 человек' },
 ];
 
 export default function HomePage() {
   useDocumentTitle('');
   const navigate = useNavigate();
   const [query, setQuery] = useState('');
-  const upcoming = useFetch((signal) => eventsApi.list({ limit: 6 }, signal), []);
+  const week = useFetch((signal) => eventsApi.list({ limit: 5, to: new Date(Date.now() + 7 * 864e5).toISOString() }, signal), []);
+  const upcoming = useFetch((signal) => eventsApi.list({ limit: 6, sort: 'popular' }, signal), []);
   const { data: categories } = useFetch(() => categoriesApi.list(), []);
 
   const submit = (e) => {
@@ -34,85 +29,71 @@ export default function HomePage() {
 
   return (
     <>
-      <section className="hero">
-        <div className="container hero__inner">
-          <div className="hero__text">
-            <span className="hero__badge"><BellRing size={14} /> Регистрация и напоминания в одном месте</span>
-            <h1>Конференции, вебинары и встречи, <span className="gradient-text">которые нельзя пропустить</span></h1>
-            <p>EventHub собирает мероприятия в одном каталоге: регистрируйтесь в один клик, общайтесь с участниками в чате и получайте напоминания вовремя.</p>
-            <form className="hero__search" onSubmit={submit}>
-              <Search size={20} />
-              <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="React, стартап, дизайн…" aria-label="Поиск мероприятий" />
-              <button type="submit" className="btn btn--primary">Найти</button>
-            </form>
-            <div className="hero__stats">
-              <div><b>{upcoming.data?.meta.total ?? '—'}</b><span>{plural(upcoming.data?.meta.total || 0, ['мероприятие', 'мероприятия', 'мероприятий'])} впереди</span></div>
-              <div><b>{categories?.length ?? '—'}</b><span>категорий</span></div>
-              <div><b>24/7</b><span>онлайн-регистрация</span></div>
-            </div>
-          </div>
-          <div className="hero__art" aria-hidden="true">
-            <div className="hero__card hero__card--1"><Mic size={28} /><span>DevDay 2026</span></div>
-            <div className="hero__card hero__card--2"><BellRing size={28} /><span>Начало через 1 час</span></div>
-            <div className="hero__card hero__card--3"><Users size={28} /><span>+128 участников</span></div>
-            <div className="hero__blob" />
-          </div>
+      <section className="home-hero container">
+        <div className="home-hero__intro">
+          <h1>Конференции, вебинары и встречи в Минске и онлайн</h1>
+          <p className="lead">
+            Регистрируйтесь на мероприятия, общайтесь с другими участниками и получайте напоминание
+            за день до начала, чтобы ничего не пропустить.
+          </p>
+          <form className="search search--hero" onSubmit={submit} role="search">
+            <Search size={20} aria-hidden="true" />
+            <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Например, React или маркетинг" aria-label="Поиск мероприятий" />
+            <button type="submit" className="btn btn--primary">Найти</button>
+          </form>
+          {upcoming.data && (
+            <p className="muted">
+              Впереди {upcoming.data.meta.total} {plural(upcoming.data.meta.total, ['мероприятие', 'мероприятия', 'мероприятий'])}. <Link to="/events">Открыть всю программу</Link>
+            </p>
+          )}
         </div>
+
+        <aside className="week" aria-labelledby="week-title">
+          <h2 id="week-title" className="week__title">Ближайшие 7 дней</h2>
+          {week.error && <ErrorState message={week.error} onRetry={week.reload} />}
+          <div className="agenda agenda--compact">
+            {week.loading && !week.data && Array.from({ length: 4 }, (_, i) => <EventRowSkeleton key={i} compact />)}
+            {week.data?.data.map((e) => <EventRow key={e.id} event={e} compact />)}
+            {week.data?.data.length === 0 && <p className="muted week__empty">На этой неделе мероприятий нет.</p>}
+          </div>
+        </aside>
       </section>
 
       <section className="section container">
         <div className="section__head">
-          <h2>Ближайшие мероприятия</h2>
-          <Link to="/events" className="link-arrow">Все мероприятия <ArrowRight size={16} /></Link>
+          <h2>Больше всего регистраций</h2>
+          <Link to="/events?sort=popular">Все популярные</Link>
         </div>
         {upcoming.error ? <ErrorState message={upcoming.error} onRetry={upcoming.reload} /> : (
-          <div className="grid grid--cards">
-            {upcoming.loading && !upcoming.data
-              ? Array.from({ length: 3 }, (_, i) => <EventCardSkeleton key={i} />)
-              : upcoming.data.data.map((e) => <EventCard key={e.id} event={e} />)}
+          <div className="agenda">
+            {upcoming.loading && !upcoming.data && Array.from({ length: 3 }, (_, i) => <EventRowSkeleton key={i} />)}
+            {upcoming.data?.data.map((e) => <EventRow key={e.id} event={e} />)}
           </div>
         )}
       </section>
 
-      <section className="section container">
-        <h2>Форматы</h2>
-        <div className="grid grid--3">
-          {FORMATS.map(({ type, icon: Icon, title, text }) => (
-            <Link key={type} to={`/events?type=${type}`} className={`card format format--${type}`}>
-              <Icon size={28} />
-              <h3>{title}</h3>
-              <p>{text}</p>
-            </Link>
-          ))}
-        </div>
-      </section>
-
-      {categories?.length > 0 && (
-        <section className="section container">
-          <h2>Категории</h2>
-          <div className="categories">
-            {categories.map((c) => (
-              <Link key={c.id} to={`/events?category=${c.id}`} className="category-pill" style={{ '--chip': c.color }}>
-                <span className="category-pill__dot" />
-                {c.name}
-                <span className="category-pill__count">{c.eventsCount}</span>
-              </Link>
+      <section className="section container topics">
+        <div>
+          <h2>Форматы</h2>
+          <ul className="link-list">
+            {FORMATS.map((f) => (
+              <li key={f.type}>
+                <Link to={`/events?type=${f.type}`}><span className={`type type--${f.type}`}>{f.title}</span></Link>
+                <span className="muted">{f.text}</span>
+              </li>
             ))}
-          </div>
-        </section>
-      )}
-
-      <section className="section container">
-        <h2>Как это работает</h2>
-        <div className="grid grid--3 steps">
-          {STEPS.map(({ icon: Icon, title, text }, i) => (
-            <div key={title} className="step">
-              <span className="step__num">{i + 1}</span>
-              <Icon size={26} />
-              <h3>{title}</h3>
-              <p>{text}</p>
-            </div>
-          ))}
+          </ul>
+        </div>
+        <div>
+          <h2>Темы</h2>
+          <ul className="link-list">
+            {categories?.map((c) => (
+              <li key={c.id}>
+                <Link to={`/events?category=${c.id}`} className="cat-mark" style={{ '--cat': c.color }}>{c.name}</Link>
+                <span className="muted">{c.eventsCount} {plural(c.eventsCount, ['мероприятие', 'мероприятия', 'мероприятий'])}</span>
+              </li>
+            ))}
+          </ul>
         </div>
       </section>
     </>

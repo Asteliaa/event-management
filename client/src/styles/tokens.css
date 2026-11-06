@@ -1,48 +1,74 @@
-/* Дизайн-токены: цвета, радиусы, тени. Темная тема переопределяет переменные */
+/* Дизайн-токены.
+   Идея оформления – «программа мероприятий»: спокойный бумажный фон, строгая типографика,
+   крупные даты как в настенном календаре. Ультрамарин – действия и ссылки,
+   янтарный «маркер» – только то, что связано со временем: напоминания и скорое начало. */
+@import '@fontsource/golos-text/400.css';
+@import '@fontsource/golos-text/500.css';
+@import '@fontsource/golos-text/600.css';
+@import '@fontsource/unbounded/500.css';
+@import '@fontsource/unbounded/600.css';
+
 :root {
-  --brand: #6366f1;
-  --brand-2: #a855f7;
-  --brand-soft: #eef2ff;
-  --brand-gradient: linear-gradient(135deg, var(--brand), var(--brand-2));
-  --accent: #f59e0b;
-  --success: #10b981;
-  --danger: #ef4444;
-  --warning: #f59e0b;
-
-  --bg: #f6f7fb;
+  --paper: #f4f5f2;
   --surface: #ffffff;
-  --surface-2: #f1f3f9;
-  --text: #0f172a;
-  --text-2: #334155;
-  --muted: #64748b;
-  --border: #e2e8f0;
-  --shadow-sm: 0 1px 2px rgb(15 23 42 / .06);
-  --shadow: 0 4px 16px -4px rgb(15 23 42 / .1), 0 2px 4px rgb(15 23 42 / .04);
-  --shadow-lg: 0 20px 40px -12px rgb(79 70 229 / .25);
+  --ink: #16191f;
+  --ink-2: #464c57;
+  --muted: #6e7480;
+  --line: #dcdfd9;
+  --line-strong: #c3c7c0;
 
-  --radius-sm: 8px;
-  --radius: 14px;
-  --radius-lg: 22px;
-  --header-h: 68px;
-  --container: 1200px;
-  --font: 'Inter', system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --primary: #2e3bb5;
+  --primary-hover: #232e94;
+  --primary-soft: #e7e9f8;
+  --on-primary: #ffffff;
+  --signal: #f4b740;
+  --signal-soft: #fcefcb;
+  --danger: #c8372d;
+  --success: #1f7a52;
+
+  --conference: #2e3bb5;
+  --webinar: #0f7486;
+  --meeting: #5e7a1f;
+
+  --font-body: 'Golos Text', system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+  --font-display: 'Unbounded', 'Golos Text', system-ui, sans-serif;
+
+  /* модульная шкала 1.25 */
+  --fs-xs: .8rem;
+  --fs-sm: .9rem;
+  --fs-md: 1rem;
+  --fs-lg: 1.25rem;
+  --fs-xl: 1.563rem;
+  --fs-2xl: 1.953rem;
+  --fs-3xl: clamp(2rem, 1.4rem + 2.6vw, 3.05rem);
+
+  --radius-control: 6px;
+  --radius-panel: 10px;
+  --shadow-float: 0 12px 32px -12px rgb(22 25 31 / .28), 0 2px 6px rgb(22 25 31 / .08);
+  --header-h: 64px;
+  --container: 1160px;
 
   color-scheme: light;
 }
 
 [data-theme='dark'] {
-  --brand: #818cf8;
-  --brand-2: #c084fc;
-  --brand-soft: rgb(129 140 248 / .14);
-  --bg: #0b1020;
-  --surface: #131a2e;
-  --surface-2: #1b2340;
-  --text: #e8ecf6;
-  --text-2: #c3cbe0;
-  --muted: #8b95b0;
-  --border: #263052;
-  --shadow-sm: 0 1px 2px rgb(0 0 0 / .4);
-  --shadow: 0 6px 20px -6px rgb(0 0 0 / .6);
-  --shadow-lg: 0 20px 40px -12px rgb(0 0 0 / .7);
+  --paper: #121418;
+  --surface: #1a1d23;
+  --ink: #e9eaec;
+  --ink-2: #bfc3ca;
+  --muted: #8b909a;
+  --line: #2a2e36;
+  --line-strong: #3a3f49;
+  --primary: #8e99ff;
+  --primary-hover: #a9b1ff;
+  --primary-soft: rgb(142 153 255 / .14);
+  --on-primary: #10132e;
+  --signal-soft: rgb(244 183 64 / .16);
+  --danger: #ef6a5f;
+  --success: #4cc38a;
+  --conference: #9aa4ff;
+  --webinar: #4fc3d4;
+  --meeting: #a8c76a;
+  --shadow-float: 0 12px 32px -12px rgb(0 0 0 / .7);
   color-scheme: dark;
 }

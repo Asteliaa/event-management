@@ -68,7 +68,7 @@ function ParticipantsModal({ event, onClose }) {
 }
 
 export default function AdminEvents() {
-  useDocumentTitle('Мероприятия · админ');
+  useDocumentTitle('Мероприятия');
   const { notify } = useNotifications();
   const [search, setSearch] = useState('');
   const [when, setWhen] = useState('all');

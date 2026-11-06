@@ -7,9 +7,9 @@ import { useFetch } from '../hooks/useFetch.js';
 import { useDocumentTitle } from '../hooks/useDocumentTitle.js';
 import { authApi, remindersApi } from '../api/index.js';
 import { getErrorMessage, getFieldErrors } from '../api/client.js';
-import EventCard from '../components/events/EventCard.jsx';
+import EventRow, { DateBlock } from '../components/events/EventCard.jsx';
 import { EmptyState, ErrorState, Field, Spinner } from '../components/ui/index.jsx';
-import { STATUS_LABELS, TYPE_LABELS, formatDate, formatDateTime, formatOffset, formatTime, placeOf, timeUntil } from '../utils/format.js';
+import { STATUS_LABELS, TYPE_LABELS, formatDateTime, formatOffset, formatTime, placeOf, timeUntil } from '../utils/format.js';
 
 const TABS = [
   { to: '/profile', label: 'Мои регистрации', icon: CalendarCheck, end: true },
@@ -23,11 +23,11 @@ export default function ProfileLayout() {
   const { user } = useAuth();
   return (
     <div className="container page">
-      <header className="profile-head card">
+      <header className="profile-head">
         <span className="avatar avatar--lg">{user.name.split(' ').map((p) => p[0]).slice(0, 2).join('').toUpperCase()}</span>
         <div>
           <h1>{user.name}</h1>
-          <p className="muted">{user.email}{user.city && ` · ${user.city}`}{user.role === 'admin' && ' · администратор'}</p>
+          <p className="muted">{[user.email, user.city, user.role === 'admin' && 'администратор'].filter(Boolean).join(', ')}</p>
         </div>
       </header>
       <nav className="tabs" aria-label="Разделы кабинета">
@@ -61,18 +61,15 @@ export function MyRegistrations() {
       )}
       <div className="timeline">
         {data?.map((r) => (
-          <Link key={r.id} to={`/events/${r.event.id}`} className="card timeline__item">
-            <div className="timeline__date" style={{ '--chip': r.event.category?.color || '#6366f1' }}>
-              <b>{new Date(r.event.startsAt).getDate()}</b>
-              <span>{formatDate(r.event.startsAt).split(' ')[1]}</span>
-            </div>
+          <Link key={r.id} to={`/events/${r.event.id}`} className="timeline__item">
+            <DateBlock date={r.event.startsAt} />
             <div className="timeline__body">
               <h3>{r.event.title}</h3>
-              <p className="muted">{TYPE_LABELS[r.event.type]} · {formatTime(r.event.startsAt)} · {placeOf(r.event)}</p>
+              <p className="muted">{TYPE_LABELS[r.event.type]}, {formatTime(r.event.startsAt)}, {placeOf(r.event)}</p>
             </div>
             <div className="timeline__side">
               <span className={`chip chip--status-${r.status}`}>{STATUS_LABELS[r.status]}</span>
-              <small className="muted">{r.tickets} бил. · {timeUntil(r.event.startsAt)}</small>
+              <small className="muted">{r.tickets} {r.tickets === 1 ? 'билет' : 'билета'}, {timeUntil(r.event.startsAt)}</small>
             </div>
           </Link>
         ))}
@@ -87,7 +84,7 @@ export function MyFavorites() {
   if (loading && !data) return <Spinner />;
   if (error) return <ErrorState message={error} onRetry={reload} />;
   if (!data.length) return <EmptyState icon={Heart} title="В избранном пусто" text="Нажмите «В избранное» на странице мероприятия." />;
-  return <div className="grid grid--cards">{data.map((e) => <EventCard key={e.id} event={e} />)}</div>;
+  return <div className="agenda">{data.map((e) => <EventRow key={e.id} event={e} />)}</div>;
 }
 
 export function MyReminders() {
@@ -121,7 +118,7 @@ export function MyReminders() {
             <li key={r.id} className="reminder">
               <span className="reminder__text">
                 <Link to={`/events/${r.event.id}`}><b>{r.event.title}</b></Link>
-                <small>{formatOffset(r.offsetMinutes)} до начала · придет {formatDateTime(r.remindAt)}{r.kind === 'auto' && ' · авто'}</small>
+                <small>{formatOffset(r.offsetMinutes)} до начала, придет {formatDateTime(r.remindAt)}{r.kind === 'auto' && ' (автоматически)'}</small>
               </span>
               <button type="button" className="icon-btn icon-btn--sm" onClick={() => remove(r.id)} aria-label="Удалить"><Trash2 size={15} /></button>
             </li>
@@ -143,7 +140,7 @@ export function MyReminders() {
             <li key={r.id} className={`reminder ${r.readAt ? '' : 'is-unread'}`}>
               <span className="reminder__text">
                 <Link to={`/events/${r.event.id}`}><b>{r.event.title}</b></Link>
-                <small>Отправлено {formatDateTime(r.sentAt)} · начало {formatDateTime(r.event.startsAt)}</small>
+                <small>Отправлено {formatDateTime(r.sentAt)}, начало {formatDateTime(r.event.startsAt)}</small>
               </span>
             </li>
           ))}

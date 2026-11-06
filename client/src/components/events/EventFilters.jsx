@@ -11,7 +11,7 @@ export default function EventFilters({ values, search, onSearch, onChange, onRes
   const active = ['type', 'category', 'city', 'online', 'when'].some((k) => values[k] && !(k === 'when' && values[k] === 'upcoming'));
 
   return (
-    <div className="filters card">
+    <div className="filters">
       <div className="filters__search">
         <Search size={18} />
         <input

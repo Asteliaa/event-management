@@ -10,7 +10,7 @@ import { ConfirmDialog, ErrorState, Field, Spinner } from '../../components/ui/i
 const EMPTY = { name: '', color: '#6366f1', description: '' };
 
 export default function AdminCategories() {
-  useDocumentTitle('Категории · админ');
+  useDocumentTitle('Категории');
   const { notify } = useNotifications();
   const { data, loading, error, reload } = useFetch(() => categoriesApi.list(), []);
   const [form, setForm] = useState(EMPTY);

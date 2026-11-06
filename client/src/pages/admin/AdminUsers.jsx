@@ -11,7 +11,7 @@ import { ConfirmDialog, ErrorState, Pagination, Spinner } from '../../components
 import { formatDate } from '../../utils/format.js';
 
 export default function AdminUsers() {
-  useDocumentTitle('Пользователи · админ');
+  useDocumentTitle('Пользователи');
   const { user: me } = useAuth();
   const { notify } = useNotifications();
   const [search, setSearch] = useState('');

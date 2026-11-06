@@ -11,7 +11,6 @@
   },
   "dependencies": {
     "@fontsource/golos-text": "^5.3.0",
-    "@fontsource/unbounded": "^5.3.0",
     "axios": "^1.21.0",
     "lucide-react": "^1.70.0",
     "react": "^19.2.8",

@@ -1,4 +1,4 @@
-import { Search, SlidersHorizontal, X } from 'lucide-react';
+import { Search, X } from 'lucide-react';
 import { useFetch } from '../../hooks/useFetch.js';
 import { categoriesApi, eventsApi } from '../../api/index.js';
 import { TYPE_LABELS } from '../../utils/format.js';
@@ -11,20 +11,24 @@ export default function EventFilters({ values, search, onSearch, onChange, onRes
   const active = ['type', 'category', 'city', 'online', 'when'].some((k) => values[k] && !(k === 'when' && values[k] === 'upcoming'));
 
   return (
-    <div className="filters">
-      <div className="filters__search">
-        <Search size={18} />
-        <input
-          type="search"
-          placeholder="Поиск по названию, описанию или тегу"
-          value={search}
-          onChange={(e) => onSearch(e.target.value)}
-          aria-label="Поиск"
-        />
+    <div className="filters card">
+      <div className="filters__top">
+        <div className="filters__search">
+          <Search size={18} />
+          <input
+            type="search"
+            placeholder="Название, описание или тег"
+            value={search}
+            onChange={(e) => onSearch(e.target.value)}
+            aria-label="Поиск"
+          />
+        </div>
+        {(active || search) && (
+          <button type="button" className="btn btn--ghost" onClick={onReset}><X size={16} /> <span className="hide-mobile">Сбросить</span></button>
+        )}
       </div>
 
-      <div className="filters__row">
-        <span className="filters__label"><SlidersHorizontal size={16} /> Фильтры</span>
+      <div className="filters__grid">
         <select value={values.type || ''} onChange={(e) => onChange('type', e.target.value)} aria-label="Тип">
           <option value="">Все форматы</option>
           {Object.entries(TYPE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
@@ -38,7 +42,7 @@ export default function EventFilters({ values, search, onSearch, onChange, onRes
           {cities?.map((c) => <option key={c} value={c}>{c}</option>)}
         </select>
         <select value={values.online || ''} onChange={(e) => onChange('online', e.target.value)} aria-label="Онлайн">
-          <option value="">Онлайн и офлайн</option>
+          <option value="">Онлайн/офлайн</option>
           <option value="true">Только онлайн</option>
           <option value="false">Только офлайн</option>
         </select>
@@ -48,14 +52,11 @@ export default function EventFilters({ values, search, onSearch, onChange, onRes
           <option value="all">Все</option>
         </select>
         <select value={values.sort || 'date'} onChange={(e) => onChange('sort', e.target.value)} aria-label="Сортировка">
-          <option value="date">Сначала ближайшие</option>
+          <option value="date">По дате</option>
           <option value="-date">Сначала поздние</option>
           <option value="popular">Популярные</option>
           <option value="new">Новые</option>
         </select>
-        {active && (
-          <button type="button" className="btn btn--ghost btn--sm" onClick={onReset}><X size={15} /> Сбросить</button>
-        )}
       </div>
     </div>
   );

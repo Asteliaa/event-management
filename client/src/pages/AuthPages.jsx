@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useLocation, useNavigate } from 'react-router';
-import { Eye, EyeOff } from 'lucide-react';
+import { CalendarHeart, Eye, EyeOff } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useNotifications } from '../context/NotificationContext.jsx';
 import { useDocumentTitle } from '../hooks/useDocumentTitle.js';
@@ -68,8 +68,9 @@ function AuthForm({ mode }) {
   return (
     <div className="auth">
       <form className="card auth__card" onSubmit={handleSubmit} noValidate>
+        <span className="logo__mark" aria-hidden="true"><CalendarHeart size={22} /></span>
         <h1>{isRegister ? 'Создать аккаунт' : 'Вход в EventHub'}</h1>
-        <p className="muted center">{isRegister ? 'Регистрируйтесь на мероприятия и получайте напоминания' : 'Рады видеть вас снова'}</p>
+        <p className="auth__sub">{isRegister ? 'Регистрируйтесь на мероприятия и получайте напоминания' : 'Рады видеть вас снова'}</p>
 
         {isRegister && (
           <Field label="Имя и фамилия" error={errors.name}>
@@ -88,7 +89,7 @@ function AuthForm({ mode }) {
           {busy ? 'Подождите…' : isRegister ? 'Зарегистрироваться' : 'Войти'}
         </button>
 
-        <p className="center small">
+        <p className="auth__switch">
           {isRegister
             ? <>Уже есть аккаунт? <Link to="/login" state={location.state}>Войти</Link></>
             : <>Нет аккаунта? <Link to="/register" state={location.state}>Зарегистрироваться</Link></>}

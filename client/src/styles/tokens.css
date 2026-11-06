@@ -1,74 +1,109 @@
-/* Дизайн-токены.
-   Идея оформления – «программа мероприятий»: спокойный бумажный фон, строгая типографика,
-   крупные даты как в настенном календаре. Ультрамарин – действия и ссылки,
-   янтарный «маркер» – только то, что связано со временем: напоминания и скорое начало. */
+/* Дизайн-токены EventHub.
+   Все цвета, отступы, размеры шрифта, радиусы и высоты элементов управления задаются здесь,
+   компоненты используют только эти переменные. Нейтральная палитра Slate + синий основной цвет,
+   статусы: зеленый (успех), янтарный (предупреждение, напоминания), красный (ошибка). */
 @import '@fontsource/golos-text/400.css';
 @import '@fontsource/golos-text/500.css';
 @import '@fontsource/golos-text/600.css';
-@import '@fontsource/unbounded/500.css';
-@import '@fontsource/unbounded/600.css';
+@import '@fontsource/golos-text/700.css';
 
 :root {
-  --paper: #f4f5f2;
+  /* Цвета: поверхности */
+  --bg: #f5f7fa;
   --surface: #ffffff;
-  --ink: #16191f;
-  --ink-2: #464c57;
-  --muted: #6e7480;
-  --line: #dcdfd9;
-  --line-strong: #c3c7c0;
+  --surface-2: #f1f4f8;        /* заливка неактивных зон: шапка таблицы, сегменты */
+  --border: #e3e8ef;
+  --border-strong: #cdd5df;
 
-  --primary: #2e3bb5;
-  --primary-hover: #232e94;
-  --primary-soft: #e7e9f8;
+  /* Цвета: текст */
+  --text: #111827;
+  --text-2: #374151;
+  --muted: #6b7280;
+
+  /* Цвета: основной и статусы */
+  --primary: #2563eb;
+  --primary-hover: #1d4ed8;
+  --primary-soft: #eff4ff;
+  --primary-ring: rgb(37 99 235 / .22);
   --on-primary: #ffffff;
-  --signal: #f4b740;
-  --signal-soft: #fcefcb;
-  --danger: #c8372d;
-  --success: #1f7a52;
+  --success: #15803d;
+  --success-soft: #ecfdf3;
+  --warning: #b45309;
+  --warning-soft: #fff7e6;
+  --warning-fill: #f59e0b;
+  --danger: #dc2626;
+  --danger-soft: #fef2f2;
 
-  --conference: #2e3bb5;
-  --webinar: #0f7486;
-  --meeting: #5e7a1f;
+  /* Форматы мероприятий */
+  --conference: #4f46e5;
+  --webinar: #0e7490;
+  --meeting: #15803d;
 
-  --font-body: 'Golos Text', system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
-  --font-display: 'Unbounded', 'Golos Text', system-ui, sans-serif;
-
-  /* модульная шкала 1.25 */
-  --fs-xs: .8rem;
-  --fs-sm: .9rem;
+  /* Типографика: один шрифт, шкала 12/14/16/18/22/28/36 */
+  --font: 'Golos Text', system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+  --fs-xs: .75rem;
+  --fs-sm: .875rem;
   --fs-md: 1rem;
-  --fs-lg: 1.25rem;
-  --fs-xl: 1.563rem;
-  --fs-2xl: 1.953rem;
-  --fs-3xl: clamp(2rem, 1.4rem + 2.6vw, 3.05rem);
+  --fs-lg: 1.125rem;
+  --fs-xl: 1.375rem;
+  --fs-2xl: 1.75rem;
+  --fs-3xl: clamp(1.75rem, 1.2rem + 2vw, 2.375rem);
 
-  --radius-control: 6px;
-  --radius-panel: 10px;
-  --shadow-float: 0 12px 32px -12px rgb(22 25 31 / .28), 0 2px 6px rgb(22 25 31 / .08);
+  /* Отступы: шаг 4px */
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-5: 20px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+  --sp-10: 40px;
+  --sp-12: 48px;
+
+  /* Размеры элементов управления: кнопки, поля и списки одной высоты */
+  --control-sm: 32px;
+  --control: 40px;
+  --control-lg: 48px;
+
+  --radius-sm: 6px;
+  --radius: 8px;
+  --radius-lg: 12px;
+  --shadow-sm: 0 1px 2px rgb(16 24 40 / .05);
+  --shadow-md: 0 4px 12px -2px rgb(16 24 40 / .08), 0 2px 4px -2px rgb(16 24 40 / .04);
+  --shadow-lg: 0 16px 32px -8px rgb(16 24 40 / .18), 0 4px 8px -4px rgb(16 24 40 / .06);
+
   --header-h: 64px;
-  --container: 1160px;
+  --container: 1200px;
 
   color-scheme: light;
 }
 
 [data-theme='dark'] {
-  --paper: #121418;
-  --surface: #1a1d23;
-  --ink: #e9eaec;
-  --ink-2: #bfc3ca;
-  --muted: #8b909a;
-  --line: #2a2e36;
-  --line-strong: #3a3f49;
-  --primary: #8e99ff;
-  --primary-hover: #a9b1ff;
-  --primary-soft: rgb(142 153 255 / .14);
-  --on-primary: #10132e;
-  --signal-soft: rgb(244 183 64 / .16);
-  --danger: #ef6a5f;
-  --success: #4cc38a;
-  --conference: #9aa4ff;
-  --webinar: #4fc3d4;
-  --meeting: #a8c76a;
-  --shadow-float: 0 12px 32px -12px rgb(0 0 0 / .7);
+  --bg: #0f172a;
+  --surface: #1e293b;
+  --surface-2: #172033;
+  --border: #334155;
+  --border-strong: #475569;
+  --text: #f1f5f9;
+  --text-2: #cbd5e1;
+  --muted: #94a3b8;
+  --primary: #60a5fa;
+  --primary-hover: #93c5fd;
+  --primary-soft: rgb(96 165 250 / .14);
+  --primary-ring: rgb(96 165 250 / .3);
+  --on-primary: #0b1220;
+  --success: #4ade80;
+  --success-soft: rgb(74 222 128 / .12);
+  --warning: #fbbf24;
+  --warning-soft: rgb(251 191 36 / .12);
+  --warning-fill: #f59e0b;
+  --danger: #f87171;
+  --danger-soft: rgb(248 113 113 / .12);
+  --conference: #a5b4fc;
+  --webinar: #67e8f9;
+  --meeting: #86efac;
+  --shadow-sm: none;
+  --shadow-md: 0 4px 12px rgb(0 0 0 / .35);
+  --shadow-lg: 0 16px 32px rgb(0 0 0 / .5);
   color-scheme: dark;
 }

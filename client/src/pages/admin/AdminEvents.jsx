@@ -8,7 +8,7 @@ import { eventsApi, registrationsApi } from '../../api/index.js';
 import { getErrorMessage } from '../../api/client.js';
 import { useNotifications } from '../../context/NotificationContext.jsx';
 import { ConfirmDialog, ErrorState, Modal, Pagination, Spinner } from '../../components/ui/index.jsx';
-import { STATUS_LABELS, TYPE_LABELS, downloadBlob, formatDateTime } from '../../utils/format.js';
+import { STATUS_LABELS, TYPE_LABELS, downloadBlob, formatShort, formatTime } from '../../utils/format.js';
 
 function ParticipantsModal({ event, onClose }) {
   const { notify } = useNotifications();
@@ -47,7 +47,7 @@ function ParticipantsModal({ event, onClose }) {
             <tbody>
               {data.map((r) => (
                 <tr key={r.id}>
-                  <td>{r.user?.name}<br /><small className="muted">{r.user?.email}</small></td>
+                  <td>{r.user?.name}<small className="muted">{r.user?.email}</small></td>
                   <td>{r.tickets}</td>
                   <td>
                     {r.status === 'cancelled' ? STATUS_LABELS.cancelled : (
@@ -115,17 +115,18 @@ export default function AdminEvents() {
       {data && (
         <div className="card table-wrap">
           <table className="table table--hover">
-            <thead><tr><th>Название</th><th>Формат</th><th>Дата</th><th>Места</th><th aria-label="Действия" /></tr></thead>
+            <thead><tr><th>Название</th><th className="hide-mobile">Формат</th><th className="hide-mobile">Дата</th><th className="hide-mobile">Места</th><th aria-label="Действия" /></tr></thead>
             <tbody>
               {data.data.map((e) => (
                 <tr key={e.id} className={e.status === 'cancelled' ? 'is-muted' : ''}>
                   <td>
                     <b>{e.title}</b>
-                    {e.category && <><br /><small style={{ color: e.category.color }}>{e.category.name}</small></>}
+                    {e.category && <small className="muted"><span className="color-dot" style={{ background: e.category.color }} /> {e.category.name}</small>}
+                    <small className="muted only-mobile">{TYPE_LABELS[e.type]}, {formatShort(e.startsAt)}, {formatTime(e.startsAt)}, мест {e.seatsTaken}{e.capacity ? ` / ${e.capacity}` : ''}</small>
                   </td>
-                  <td>{TYPE_LABELS[e.type]}</td>
-                  <td>{formatDateTime(e.startsAt)}</td>
-                  <td>{e.seatsTaken}{e.capacity ? ` / ${e.capacity}` : ''}</td>
+                  <td className="hide-mobile">{TYPE_LABELS[e.type]}</td>
+                  <td className="hide-mobile nowrap">{formatShort(e.startsAt)}, {formatTime(e.startsAt)}</td>
+                  <td className="hide-mobile nowrap">{e.seatsTaken}{e.capacity ? ` / ${e.capacity}` : ''}</td>
                   <td className="table__actions">
                     <Link to={`/events/${e.id}`} className="icon-btn icon-btn--sm" title="Открыть"><Eye size={16} /></Link>
                     <button type="button" className="icon-btn icon-btn--sm" title="Участники" onClick={() => setParticipants(e)}><Users size={16} /></button>
@@ -136,7 +137,7 @@ export default function AdminEvents() {
               ))}
             </tbody>
           </table>
-          {data.data.length === 0 && <p className="muted center">Ничего не найдено</p>}
+          {data.data.length === 0 && <p className="table-empty">Ничего не найдено</p>}
         </div>
       )}
       {data && <Pagination page={data.meta.page} pages={data.meta.pages} onChange={setPage} />}

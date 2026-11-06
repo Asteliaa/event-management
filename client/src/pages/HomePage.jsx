@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, useNavigate } from 'react-router';
-import { Search } from 'lucide-react';
+import { BellRing, MessageCircle, MonitorPlay, Presentation, Search, Ticket, UsersRound } from 'lucide-react';
 import { useFetch } from '../hooks/useFetch.js';
 import { useDocumentTitle } from '../hooks/useDocumentTitle.js';
 import { categoriesApi, eventsApi } from '../api/index.js';
@@ -9,10 +9,16 @@ import { ErrorState } from '../components/ui/index.jsx';
 import { plural } from '../utils/format.js';
 
 const FORMATS = [
-  { type: 'conference', title: 'Конференции', text: 'Доклады, секции и выставка компаний' },
-  { type: 'webinar', title: 'Вебинары', text: 'Онлайн-трансляции с вопросами спикеру' },
-  { type: 'meeting', title: 'Встречи', text: 'Воркшопы и круглые столы до 40 человек' },
+  { type: 'conference', icon: Presentation, title: 'Конференции', text: 'Доклады, секции и выставка компаний' },
+  { type: 'webinar', icon: MonitorPlay, title: 'Вебинары', text: 'Онлайн-трансляции с вопросами спикеру' },
+  { type: 'meeting', icon: UsersRound, title: 'Встречи', text: 'Воркшопы и круглые столы до 40 человек' },
 ];
+const POINTS = [
+  { icon: Ticket, title: 'Регистрация в один клик', text: 'Выберите количество билетов, места бронируются сразу' },
+  { icon: BellRing, title: 'Напоминания', text: 'Автоматически за сутки до начала и в удобное вам время' },
+  { icon: MessageCircle, title: 'Чат участников', text: 'Общайтесь с другими участниками до и во время события' },
+];
+const EVENTS_WORDS = ['мероприятие', 'мероприятия', 'мероприятий'];
 
 export default function HomePage() {
   useDocumentTitle('');
@@ -42,13 +48,22 @@ export default function HomePage() {
             <button type="submit" className="btn btn--primary">Найти</button>
           </form>
           {upcoming.data && (
-            <p className="muted">
-              Впереди {upcoming.data.meta.total} {plural(upcoming.data.meta.total, ['мероприятие', 'мероприятия', 'мероприятий'])}. <Link to="/events">Открыть всю программу</Link>
+            <p className="home-hero__stats">
+              <span>Впереди {upcoming.data.meta.total} {plural(upcoming.data.meta.total, EVENTS_WORDS)}</span>
+              <Link to="/events">Открыть каталог</Link>
             </p>
           )}
+          <ul className="points">
+            {POINTS.map(({ icon: Icon, title, text }) => (
+              <li key={title}>
+                <span className="points__icon"><Icon size={18} /></span>
+                <span><b>{title}</b>{text}</span>
+              </li>
+            ))}
+          </ul>
         </div>
 
-        <aside className="week" aria-labelledby="week-title">
+        <aside className="week card" aria-labelledby="week-title">
           <h2 id="week-title" className="week__title">Ближайшие 7 дней</h2>
           {week.error && <ErrorState message={week.error} onRetry={week.reload} />}
           <div className="agenda agenda--compact">
@@ -72,28 +87,29 @@ export default function HomePage() {
         )}
       </section>
 
-      <section className="section container topics">
-        <div>
-          <h2>Форматы</h2>
-          <ul className="link-list">
-            {FORMATS.map((f) => (
-              <li key={f.type}>
-                <Link to={`/events?type=${f.type}`}><span className={`type type--${f.type}`}>{f.title}</span></Link>
-                <span className="muted">{f.text}</span>
-              </li>
-            ))}
-          </ul>
+      <section className="section container">
+        <div className="section__head"><h2>Форматы</h2></div>
+        <div className="formats">
+          {FORMATS.map(({ type, icon: Icon, title, text }) => (
+            <Link key={type} to={`/events?type=${type}`} className="card format-card">
+              <span className={`format-card__icon format-card__icon--${type}`}><Icon size={20} /></span>
+              <h3>{title}</h3>
+              <p>{text}</p>
+            </Link>
+          ))}
         </div>
-        <div>
-          <h2>Темы</h2>
-          <ul className="link-list">
-            {categories?.map((c) => (
-              <li key={c.id}>
-                <Link to={`/events?category=${c.id}`} className="cat-mark" style={{ '--cat': c.color }}>{c.name}</Link>
-                <span className="muted">{c.eventsCount} {plural(c.eventsCount, ['мероприятие', 'мероприятия', 'мероприятий'])}</span>
-              </li>
-            ))}
-          </ul>
+      </section>
+
+      <section className="section container">
+        <div className="section__head"><h2>Темы</h2></div>
+        <div className="topics">
+          {categories?.map((c) => (
+            <Link key={c.id} to={`/events?category=${c.id}`} className="card topic">
+              <span className="color-dot" style={{ background: c.color }} />
+              <span className="topic__name">{c.name}</span>
+              <span className="topic__count">{c.eventsCount}</span>
+            </Link>
+          ))}
         </div>
       </section>
     </>

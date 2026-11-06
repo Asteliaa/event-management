@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router';
 import {
-  ArrowLeft, CalendarPlus, Heart, Link2, MapPin, Minus, Pencil, Plus, Ticket, User, Video,
+  ArrowLeft, CalendarDays, CalendarPlus, Heart, Link2, Lock, MapPin, Minus, Pencil, Plus, Ticket, User, Video,
 } from 'lucide-react';
 import { useFetch } from '../hooks/useFetch.js';
 import { useDocumentTitle } from '../hooks/useDocumentTitle.js';
@@ -89,8 +89,8 @@ function RegistrationPanel({ event, onChange }) {
   else if (!isAuthenticated) {
     body = (
       <>
-        <p className="muted">Войдите, чтобы зарегистрироваться и получать напоминания.</p>
-        <Link to="/login" state={{ from: location }} className="btn btn--primary btn--block">Войти и зарегистрироваться</Link>
+        <p className="muted small">Войдите, чтобы зарегистрироваться и получать напоминания.</p>
+        <Link to="/login" state={{ from: location }} className="btn btn--primary btn--block btn--lg">Войти и зарегистрироваться</Link>
       </>
     );
   } else if (reg) {
@@ -98,10 +98,12 @@ function RegistrationPanel({ event, onChange }) {
       <>
         <p className="notice notice--success"><Ticket size={16} /> Вы зарегистрированы</p>
         <div className="tickets">
-          <span>Билетов:</span>
-          <button type="button" className="icon-btn icon-btn--sm" disabled={busy || reg.tickets <= 1} onClick={() => changeTickets(-1)} aria-label="Меньше"><Minus size={16} /></button>
-          <b>{reg.tickets}</b>
-          <button type="button" className="icon-btn icon-btn--sm" disabled={busy || reg.tickets >= 10 || event.seatsLeft === 0} onClick={() => changeTickets(1)} aria-label="Больше"><Plus size={16} /></button>
+          <span>Количество билетов</span>
+          <span className="stepper">
+            <button type="button" className="icon-btn" disabled={busy || reg.tickets <= 1} onClick={() => changeTickets(-1)} aria-label="Меньше"><Minus size={16} /></button>
+            <b>{reg.tickets}</b>
+            <button type="button" className="icon-btn" disabled={busy || reg.tickets >= 10 || event.seatsLeft === 0} onClick={() => changeTickets(1)} aria-label="Больше"><Plus size={16} /></button>
+          </span>
         </div>
         <button type="button" className="btn btn--ghost btn--block" onClick={() => setConfirm(true)} disabled={busy}>Отменить регистрацию</button>
       </>
@@ -111,10 +113,12 @@ function RegistrationPanel({ event, onChange }) {
     body = (
       <>
         <div className="tickets">
-          <span>Билетов:</span>
-          <button type="button" className="icon-btn icon-btn--sm" disabled={tickets <= 1} onClick={() => setTickets((t) => t - 1)} aria-label="Меньше"><Minus size={16} /></button>
-          <b>{tickets}</b>
-          <button type="button" className="icon-btn icon-btn--sm" disabled={tickets >= maxTickets} onClick={() => setTickets((t) => t + 1)} aria-label="Больше"><Plus size={16} /></button>
+          <span>Количество билетов</span>
+          <span className="stepper">
+            <button type="button" className="icon-btn" disabled={tickets <= 1} onClick={() => setTickets((t) => t - 1)} aria-label="Меньше"><Minus size={16} /></button>
+            <b>{tickets}</b>
+            <button type="button" className="icon-btn" disabled={tickets >= maxTickets} onClick={() => setTickets((t) => t + 1)} aria-label="Больше"><Plus size={16} /></button>
+          </span>
         </div>
         <button type="button" className="btn btn--primary btn--block btn--lg" onClick={register} disabled={busy}>
           {busy ? 'Регистрируем…' : 'Зарегистрироваться'}
@@ -124,8 +128,9 @@ function RegistrationPanel({ event, onChange }) {
   }
 
   return (
-    <section className="ticket">
+    <section className="card ticket">
       <div className="ticket__top">
+        <p className="ticket__label">Регистрация</p>
         <p className="ticket__countdown">{event.isPast ? 'Мероприятие завершено' : `Начнется ${timeUntil(event.startsAt)}`}</p>
         <SeatsBar event={event} />
       </div>
@@ -184,7 +189,7 @@ export default function EventPage() {
     <div className="event-page container">
       <button type="button" className="back-link" onClick={() => navigate(-1)}><ArrowLeft size={16} /> Назад</button>
 
-      <header className="event-head">
+      <header className="event-head card">
         <DateBlock date={event.startsAt} size="lg" />
         <div className="event-head__text">
           <p className="event-row__kicker">
@@ -193,9 +198,14 @@ export default function EventPage() {
             {event.status === 'cancelled' && <span className="flag flag--danger">Отменено</span>}
           </p>
           <h1 className="event-head__title">{event.title}</h1>
-          <p className="event-head__when">
-            {formatDate(event.startsAt)}, {formatTime(event.startsAt)}{event.endsAt && `–${formatTime(event.endsAt)}`}
-          </p>
+          <ul className="event-meta">
+            <li>
+              <CalendarDays size={16} />
+              <span>{formatDate(event.startsAt)}, {formatTime(event.startsAt)}{event.endsAt && `–${formatTime(event.endsAt)}`}</span>
+            </li>
+            <li>{event.location?.online ? <Video size={16} /> : <MapPin size={16} />}<span>{placeOf(event)}</span></li>
+            <li><User size={16} /><span>{event.organizer?.name || 'EventHub'}</span></li>
+          </ul>
         </div>
       </header>
 
@@ -205,43 +215,31 @@ export default function EventPage() {
 
           <div className="event-page__actions">
             {isAuthenticated && (
-              <button type="button" className={`btn btn--quiet ${event.isFavorite ? 'is-favorite' : ''}`} onClick={toggleFavorite} aria-pressed={event.isFavorite}>
+              <button type="button" className={`btn btn--secondary btn--sm ${event.isFavorite ? 'is-favorite' : ''}`} onClick={toggleFavorite} aria-pressed={event.isFavorite}>
                 <Heart size={16} fill={event.isFavorite ? 'currentColor' : 'none'} /> {event.isFavorite ? 'В избранном' : 'В избранное'}
               </button>
             )}
-            <a className="btn btn--quiet" href={eventsApi.calendarUrl(event.id)}><CalendarPlus size={16} /> Добавить в календарь</a>
-            <button type="button" className="btn btn--quiet" onClick={copyLink}><Link2 size={16} /> Скопировать ссылку</button>
-            {isAdmin && <Link className="btn btn--quiet" to={`/admin/events/${event.id}/edit`}><Pencil size={16} /> Редактировать</Link>}
+            <a className="btn btn--secondary btn--sm" href={eventsApi.calendarUrl(event.id)}><CalendarPlus size={16} /> В календарь (.ics)</a>
+            <button type="button" className="btn btn--secondary btn--sm" onClick={copyLink}><Link2 size={16} /> Скопировать ссылку</button>
+            {isAdmin && <Link className="btn btn--secondary btn--sm" to={`/admin/events/${event.id}/edit`}><Pencil size={16} /> Редактировать</Link>}
           </div>
 
-          <dl className="facts">
-            <div>
-              <dt>{event.location?.online ? <Video size={16} /> : <MapPin size={16} />} Где</dt>
-              <dd>{placeOf(event)}</dd>
-            </div>
-            <div>
-              <dt><User size={16} /> Организатор</dt>
-              <dd>{event.organizer?.name || 'EventHub'}</dd>
-            </div>
-          </dl>
-
-          <section className="prose">
+          <section className="card prose">
             <h2>О мероприятии</h2>
             {(event.description || 'Организатор пока не добавил описание.').split('\n').map((p, i) => <p key={i}>{p}</p>)}
             {event.location?.online && event.location.url && event.myRegistration && (
               <p className="notice"><Video size={16} /> Трансляция: <a href={event.location.url} target="_blank" rel="noreferrer">{event.location.url}</a></p>
             )}
+            {event.tags?.length > 0 && (
+              <div className="tags">
+                {event.tags.map((t) => <Link key={t} to={`/events?search=${encodeURIComponent(t)}`} className="tag">#{t}</Link>)}
+              </div>
+            )}
           </section>
-
-          {event.tags?.length > 0 && (
-            <div className="tags">
-              {event.tags.map((t) => <Link key={t} to={`/events?search=${encodeURIComponent(t)}`} className="tag">#{t}</Link>)}
-            </div>
-          )}
 
           {canChat && <EventChat eventId={event.id} />}
           {isAuthenticated && !canChat && !event.isPast && (
-            <p className="muted">Чат участников откроется после регистрации.</p>
+            <p className="card hint-box"><Lock size={18} /> Чат участников откроется после регистрации.</p>
           )}
         </article>
 
@@ -259,7 +257,7 @@ export default function EventPage() {
 
       {similar?.length > 0 && (
         <section className="section">
-          <h2>Похожие мероприятия</h2>
+          <div className="section__head"><h2>Похожие мероприятия</h2></div>
           <div className="agenda">{similar.map((e) => <EventRow key={e.id} event={e} />)}</div>
         </section>
       )}

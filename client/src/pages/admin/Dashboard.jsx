@@ -32,7 +32,7 @@ export default function Dashboard() {
     { icon: CalendarRange, label: 'Мероприятий', value: totals.events, sub: `${totals.upcoming} предстоящих` },
     { icon: Users, label: 'Пользователей', value: totals.users },
     { icon: Ticket, label: 'Регистраций', value: totals.registrations, sub: `${totals.tickets} билетов` },
-    { icon: BellRing, label: 'Напоминаний отправлено', value: totals.remindersSent },
+    { icon: BellRing, label: 'Напоминаний', value: totals.remindersSent, sub: 'отправлено' },
   ];
 
   // последние 14 дней, включая дни без регистраций

@@ -56,7 +56,7 @@ export default function AdminCategories() {
               <tbody>
                 {data.map((c) => (
                   <tr key={c.id}>
-                    <td><span className="color-dot" style={{ background: c.color }} /> <b>{c.name}</b><br /><small className="muted">{c.description}</small></td>
+                    <td><span className="color-dot" style={{ background: c.color }} /> <b>{c.name}</b><small className="muted">{c.description}</small></td>
                     <td>{c.eventsCount}</td>
                     <td className="table__actions">
                       <button type="button" className="icon-btn icon-btn--sm" onClick={() => { setEditing(c.id); setForm({ name: c.name, color: c.color, description: c.description }); }} aria-label="Изменить"><Pencil size={16} /></button>

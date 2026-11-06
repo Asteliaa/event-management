@@ -89,6 +89,7 @@ export default function EventFormPage() {
 
       <div className="form-layout">
         <div className="card panel form">
+          <h3 className="form__section-title">Основное</h3>
           <Field label="Название *" error={errors.title}><input value={form.title} onChange={set('title')} required /></Field>
           <Field label="Описание" error={errors.description}><textarea rows={6} value={form.description} onChange={set('description')} /></Field>
           <div className="form__row">
@@ -104,37 +105,46 @@ export default function EventFormPage() {
               </select>
             </Field>
           </div>
-          <div className="form__row">
-            <Field label="Начало *" error={errors.startsAt}><input type="datetime-local" value={form.startsAt} onChange={set('startsAt')} /></Field>
-            <Field label="Окончание" error={errors.endsAt}><input type="datetime-local" value={form.endsAt} onChange={set('endsAt')} /></Field>
-          </div>
-          <div className="form__row">
-            <Field label="Вместимость" error={errors.capacity} hint="Пусто – без ограничений">
-              <input type="number" min="1" value={form.capacity} onChange={set('capacity')} />
-            </Field>
-            <Field label="Статус" error={errors.status}>
-              <select value={form.status} onChange={set('status')}>
-                <option value="published">Опубликовано</option>
-                <option value="cancelled">Отменено</option>
-              </select>
-            </Field>
-          </div>
-          <label className="checkbox"><input type="checkbox" checked={form.online} onChange={set('online')} /> Онлайн-мероприятие</label>
-          {form.online ? (
-            <Field label="Ссылка на трансляцию" error={errors.url}><input value={form.url} onChange={set('url')} placeholder="https://" /></Field>
-          ) : (
+          <div className="form__section">
+            <h3 className="form__section-title">Дата и участники</h3>
             <div className="form__row">
-              <Field label="Город" error={errors.city}><input value={form.city} onChange={set('city')} /></Field>
-              <Field label="Место проведения" error={errors.venue}><input value={form.venue} onChange={set('venue')} /></Field>
+              <Field label="Начало *" error={errors.startsAt}><input type="datetime-local" value={form.startsAt} onChange={set('startsAt')} /></Field>
+              <Field label="Окончание" error={errors.endsAt}><input type="datetime-local" value={form.endsAt} onChange={set('endsAt')} /></Field>
             </div>
-          )}
-          <Field label="Теги" hint="Через запятую: react, frontend" error={errors.tags}><input value={form.tags} onChange={set('tags')} /></Field>
-          <Field label="Обложка (ссылка на изображение)" hint="Необязательно" error={errors.coverUrl}>
-            <input value={form.coverUrl} onChange={set('coverUrl')} placeholder="https://" />
-          </Field>
+            <div className="form__row">
+              <Field label="Вместимость" error={errors.capacity} hint="Пусто – без ограничений">
+                <input type="number" min="1" value={form.capacity} onChange={set('capacity')} />
+              </Field>
+              <Field label="Статус" error={errors.status}>
+                <select value={form.status} onChange={set('status')}>
+                  <option value="published">Опубликовано</option>
+                  <option value="cancelled">Отменено</option>
+                </select>
+              </Field>
+            </div>
+          </div>
+          <div className="form__section">
+            <h3 className="form__section-title">Место проведения</h3>
+            <label className="checkbox"><input type="checkbox" checked={form.online} onChange={set('online')} /> Онлайн-мероприятие</label>
+            {form.online ? (
+              <Field label="Ссылка на трансляцию" error={errors.url}><input value={form.url} onChange={set('url')} placeholder="https://" /></Field>
+            ) : (
+              <div className="form__row">
+                <Field label="Город" error={errors.city}><input value={form.city} onChange={set('city')} /></Field>
+                <Field label="Место проведения" error={errors.venue}><input value={form.venue} onChange={set('venue')} /></Field>
+              </div>
+            )}
+          </div>
+          <div className="form__section">
+            <h3 className="form__section-title">Дополнительно</h3>
+            <Field label="Теги" hint="Через запятую: react, frontend" error={errors.tags}><input value={form.tags} onChange={set('tags')} /></Field>
+            <Field label="Обложка (ссылка на изображение)" hint="Необязательно" error={errors.coverUrl}>
+              <input value={form.coverUrl} onChange={set('coverUrl')} placeholder="https://" />
+            </Field>
+          </div>
         </div>
         <aside className="form-preview">
-          <p className="muted small">Так мероприятие будет выглядеть в программе</p>
+          <p className="muted small">Предпросмотр в каталоге</p>
           <div className="agenda"><EventRow event={{ ...preview, title: form.title || 'Название мероприятия', seatsTaken: 0, seatsLeft: preview.capacity }} /></div>
         </aside>
       </div>

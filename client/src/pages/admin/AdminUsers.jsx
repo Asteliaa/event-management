@@ -57,19 +57,23 @@ export default function AdminUsers() {
       {data && (
         <div className="card table-wrap">
           <table className="table">
-            <thead><tr><th>Пользователь</th><th>Роль</th><th>С нами с</th><th>Статус</th><th aria-label="Действия" /></tr></thead>
+            <thead><tr><th>Пользователь</th><th>Роль</th><th className="hide-mobile">С нами с</th><th className="hide-mobile">Статус</th><th aria-label="Действия" /></tr></thead>
             <tbody>
               {data.data.map((u) => (
                 <tr key={u.id} className={u.blocked ? 'is-muted' : ''}>
-                  <td><b>{u.name}</b><br /><small className="muted">{u.email}</small></td>
+                  <td>
+                    <b>{u.name}</b>
+                    <small className="muted">{u.email}</small>
+                    {u.blocked && <small className="only-mobile"><span className="chip chip--danger">Заблокирован</span></small>}
+                  </td>
                   <td>
                     <select value={u.role} disabled={u.id === me.id} onChange={(e) => patch(u, { role: e.target.value })} aria-label="Роль">
                       <option value="user">Пользователь</option>
                       <option value="admin">Администратор</option>
                     </select>
                   </td>
-                  <td>{formatDate(u.createdAt)}</td>
-                  <td>{u.blocked ? <span className="chip chip--danger">Заблокирован</span> : <span className="chip chip--status-registered">Активен</span>}</td>
+                  <td className="hide-mobile nowrap">{formatDate(u.createdAt)}</td>
+                  <td className="hide-mobile">{u.blocked ? <span className="chip chip--danger">Заблокирован</span> : <span className="chip chip--status-registered">Активен</span>}</td>
                   <td className="table__actions">
                     {u.id === me.id ? <ShieldCheck size={18} className="muted" title="Это вы" /> : (
                       <>

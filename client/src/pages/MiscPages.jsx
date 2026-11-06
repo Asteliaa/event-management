@@ -1,5 +1,5 @@
 import { Link } from 'react-router';
-import { BellRing, Database, Lock, MessageCircle, MonitorSmartphone, Server, Compass } from 'lucide-react';
+import { BarChart3, BellRing, Database, Lock, MessageCircle, MonitorSmartphone, Server, Compass } from 'lucide-react';
 import { useDocumentTitle } from '../hooks/useDocumentTitle.js';
 
 const FEATURES = [
@@ -9,6 +9,7 @@ const FEATURES = [
   { icon: Lock, title: 'Безопасность', text: 'JWT, bcrypt, роли, helmet, CORS, ограничение попыток входа и валидация данных.' },
   { icon: Server, title: 'REST API', text: 'Express, версия /api/v1, единый формат ошибок, документация OpenAPI (Swagger).' },
   { icon: Database, title: 'MongoDB', text: 'Mongoose, 6 коллекций, индексы, агрегации и атомарное бронирование мест.' },
+  { icon: BarChart3, title: 'Админ-панель', text: 'Статистика, управление мероприятиями, категориями и пользователями, выгрузка участников в CSV.' },
   { icon: MonitorSmartphone, title: 'Адаптивность', text: 'Интерфейс на CSS Grid и Flexbox для телефона, планшета и компьютера, темная тема.' },
 ];
 
@@ -23,13 +24,13 @@ export function AboutPage() {
           и напоминаниями. Курсовая работа по дисциплине «Интернет-технологии и веб-программирование» (БГУИР).
         </p>
       </header>
-      <div className="grid grid--3">
+      <div className="features">
         {FEATURES.map(({ icon: Icon, title, text }) => (
-          <div key={title} className="card feature"><Icon size={26} /><h3>{title}</h3><p>{text}</p></div>
+          <div key={title} className="card feature"><span className="feature__icon"><Icon size={20} /></span><h3>{title}</h3><p>{text}</p></div>
         ))}
       </div>
-      <section className="card panel stack">
-        <h3>Технологии</h3>
+      <section className="card panel">
+        <h3 className="panel__title">Технологии</h3>
         <p className="tags">
           {['React 19', 'React Router 7', 'Context + useReducer', 'Vite', 'Node.js', 'Express', 'MongoDB', 'Mongoose', 'Socket.IO', 'JWT', 'Zod', 'Jest', 'Docker', 'GitHub Actions']
             .map((t) => <span key={t} className="tag">{t}</span>)}

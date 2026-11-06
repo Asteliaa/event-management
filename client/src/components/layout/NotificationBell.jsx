@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router';
 import { Bell, BellOff, CheckCheck } from 'lucide-react';
 import { useNotifications } from '../../context/NotificationContext.jsx';
-import { formatDateTime, formatOffset } from '../../utils/format.js';
+import { formatDateTime } from '../../utils/format.js';
 
 // Центр уведомлений: отправленные напоминания с отметкой «прочитано»
 export default function NotificationBell() {

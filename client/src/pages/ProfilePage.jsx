@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link, NavLink, Outlet } from 'react-router';
-import { BellRing, CalendarCheck, CalendarDays, Heart, Settings, Trash2 } from 'lucide-react';
+import { BellRing, CalendarCheck, CalendarDays, Check, Heart, Settings, Trash2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useNotifications } from '../context/NotificationContext.jsx';
 import { useFetch } from '../hooks/useFetch.js';
@@ -12,7 +12,7 @@ import { EmptyState, ErrorState, Field, Spinner } from '../components/ui/index.j
 import { STATUS_LABELS, TYPE_LABELS, formatDateTime, formatOffset, formatTime, placeOf, timeUntil } from '../utils/format.js';
 
 const TABS = [
-  { to: '/profile', label: 'Мои регистрации', icon: CalendarCheck, end: true },
+  { to: '/profile', label: 'Регистрации', icon: CalendarCheck, end: true },
   { to: '/profile/favorites', label: 'Избранное', icon: Heart },
   { to: '/profile/reminders', label: 'Напоминания', icon: BellRing },
   { to: '/profile/settings', label: 'Настройки', icon: Settings },
@@ -62,7 +62,7 @@ export function MyRegistrations() {
       <div className="timeline">
         {data?.map((r) => (
           <Link key={r.id} to={`/events/${r.event.id}`} className="timeline__item">
-            <DateBlock date={r.event.startsAt} />
+            <DateBlock date={r.event.startsAt} size="sm" />
             <div className="timeline__body">
               <h3>{r.event.title}</h3>
               <p className="muted">{TYPE_LABELS[r.event.type]}, {formatTime(r.event.startsAt)}, {placeOf(r.event)}</p>
@@ -116,6 +116,7 @@ export function MyReminders() {
         <ul className="reminders">
           {pending.map((r) => (
             <li key={r.id} className="reminder">
+              <span className="reminder__icon"><BellRing size={16} /></span>
               <span className="reminder__text">
                 <Link to={`/events/${r.event.id}`}><b>{r.event.title}</b></Link>
                 <small>{formatOffset(r.offsetMinutes)} до начала, придет {formatDateTime(r.remindAt)}{r.kind === 'auto' && ' (автоматически)'}</small>
@@ -127,7 +128,7 @@ export function MyReminders() {
       </div>
       <div className="card panel">
         <div className="panel__title-row">
-          <h3 className="panel__title">Полученные ({sent.length})</h3>
+          <h3 className="panel__title"><Check size={18} /> Полученные ({sent.length})</h3>
           {sent.some((r) => !r.readAt) && (
             <button type="button" className="link-btn" onClick={() => { markAllRead(); setData((l) => l.map((r) => ({ ...r, readAt: r.readAt || new Date().toISOString() }))); }}>
               Прочитать все
@@ -137,7 +138,8 @@ export function MyReminders() {
         {sent.length === 0 && <p className="muted">Здесь появятся напоминания, когда наступит их время.</p>}
         <ul className="reminders">
           {sent.map((r) => (
-            <li key={r.id} className={`reminder ${r.readAt ? '' : 'is-unread'}`}>
+            <li key={r.id} className={`reminder reminder--sent ${r.readAt ? '' : 'is-unread'}`}>
+              <span className="reminder__icon"><Check size={16} /></span>
               <span className="reminder__text">
                 <Link to={`/events/${r.event.id}`}><b>{r.event.title}</b></Link>
                 <small>Отправлено {formatDateTime(r.sentAt)}, начало {formatDateTime(r.event.startsAt)}</small>
@@ -201,7 +203,9 @@ export function ProfileSettings() {
           <input value={profile.city} onChange={(e) => setProfile({ ...profile, city: e.target.value })} placeholder="Минск" />
         </Field>
         <Field label="Email" hint="Email изменить нельзя"><input value={user.email} disabled /></Field>
-        <button type="submit" className="btn btn--primary" disabled={busy === 'profile'}>Сохранить</button>
+        <div className="panel__footer">
+          <button type="submit" className="btn btn--primary" disabled={busy === 'profile'}>Сохранить</button>
+        </div>
       </form>
       <form className="card panel form" onSubmit={savePassword}>
         <h3 className="panel__title">Смена пароля</h3>
@@ -213,9 +217,11 @@ export function ProfileSettings() {
           <input type="password" value={passwords.newPassword} autoComplete="new-password"
             onChange={(e) => setPasswords({ ...passwords, newPassword: e.target.value })} />
         </Field>
-        <button type="submit" className="btn btn--primary" disabled={busy === 'password' || !passwords.currentPassword || !passwords.newPassword}>
-          Изменить пароль
-        </button>
+        <div className="panel__footer">
+          <button type="submit" className="btn btn--primary" disabled={busy === 'password' || !passwords.currentPassword || !passwords.newPassword}>
+            Изменить пароль
+          </button>
+        </div>
       </form>
     </div>
   );

@@ -1,19 +1,18 @@
 import { Link } from 'react-router';
+import { Clock, MapPin, Video } from 'lucide-react';
 import { TYPE_LABELS, formatTime, placeOf } from '../../utils/format.js';
 
 const monthFmt = new Intl.DateTimeFormat('ru-RU', { month: 'short' });
 const weekdayFmt = new Intl.DateTimeFormat('ru-RU', { weekday: 'short' });
 
-// Дата в виде листка календаря: крупное число, месяц и день недели
+// Дата в виде листка календаря: месяц, число и день недели
 export function DateBlock({ date, size = 'md' }) {
   const d = new Date(date);
   return (
     <span className={`date-block date-block--${size}`}>
+      <span className="date-block__month">{monthFmt.format(d).replace('.', '')}</span>
       <span className="date-block__day">{d.getDate()}</span>
-      <span className="date-block__rest">
-        {monthFmt.format(d).replace('.', '')}
-        <span className="date-block__wd">{weekdayFmt.format(d)}</span>
-      </span>
+      <span className="date-block__wd">{weekdayFmt.format(d)}</span>
     </span>
   );
 }
@@ -23,7 +22,7 @@ export function SeatsBar({ event }) {
   const percent = Math.min(100, Math.round((event.seatsTaken / event.capacity) * 100));
   const left = event.seatsLeft;
   return (
-    <span className={`seats ${percent >= 85 ? 'seats--few' : ''}`}>
+    <span className={`seats ${left === 0 ? 'seats--full' : percent >= 85 ? 'seats--few' : ''}`}>
       <span className="seats__bar"><span style={{ width: `${percent}%` }} /></span>
       <span className="seats__label">
         {left === 0 ? 'Мест нет' : `Свободно ${left} из ${event.capacity}`}
@@ -37,7 +36,7 @@ export function CategoryMark({ category }) {
   return <span className="cat-mark" style={{ '--cat': category.color }}>{category.name}</span>;
 }
 
-// Строка программы мероприятий: дата, название, место, свободные места
+// Карточка-строка списка мероприятий: дата, формат и тема, название, время и место, свободные места
 export default function EventRow({ event, compact = false }) {
   return (
     <Link to={`/events/${event.id}`} className={`event-row ${compact ? 'event-row--compact' : ''} ${event.status === 'cancelled' ? 'is-cancelled' : ''}`}>
@@ -49,7 +48,10 @@ export default function EventRow({ event, compact = false }) {
           {event.status === 'cancelled' && <span className="flag flag--danger">Отменено</span>}
         </span>
         <span className="event-row__title">{event.title}</span>
-        <span className="event-row__place">{formatTime(event.startsAt)}, {placeOf(event)}</span>
+        <span className="event-row__place">
+          <span><Clock size={14} /> {formatTime(event.startsAt)}</span>
+          <span>{event.location?.online ? <Video size={14} /> : <MapPin size={14} />} {placeOf(event)}</span>
+        </span>
       </span>
       {!compact && <span className="event-row__side"><SeatsBar event={event} /></span>}
     </Link>
@@ -59,7 +61,7 @@ export default function EventRow({ event, compact = false }) {
 export function EventRowSkeleton({ compact = false }) {
   return (
     <div className={`event-row skeleton ${compact ? 'event-row--compact' : ''}`} aria-hidden="true">
-      <span className="date-block date-block--md"><span className="skeleton__line" style={{ width: 44, height: 36 }} /></span>
+      <span className={`date-block date-block--${compact ? 'sm' : 'md'}`} />
       <span className="event-row__main">
         <span className="skeleton__line" style={{ width: '30%' }} />
         <span className="skeleton__line skeleton__line--lg" style={{ width: '70%' }} />

@@ -1,161 +1,162 @@
-const { tokenFor, bearer, useMemoryDB } = require('./helpers');
+const { useMemoryDB, createUser, createAdmin, createEvent, inDays } = require('./helpers');
 const request = require('supertest');
-const mongoose = require('mongoose');
-const { Event } = require('../models');
-const app = require('../server');
+const app = require('../src/app');
+const { Event, Registration, Reminder } = require('../src/models');
 
 useMemoryDB();
 
-const anna = { id: new mongoose.Types.ObjectId().toString(), email: 'anna@b.c', role: 'user' };
-const ivan = { id: new mongoose.Types.ObjectId().toString(), email: 'ivan@b.c', role: 'user' };
-const admin = () => `Bearer ${tokenFor({ role: 'admin' })}`;
-const missingId = '0'.repeat(24);
-
-const newEvent = (extra = {}) => Event.create({ title: 'T', type: 'webinar', date: '2026-11-05', capacity: 5, ...extra });
-const registerAs = (who, event, data = {}) =>
-    request(app).post(`/events/${event.id}/registrations`).set('Authorization', bearer(who)).send(data);
+const register = (event, user, body = {}) =>
+    request(app).post(`/api/v1/events/${event.id}/registrations`).set('Authorization', user.auth).send(body);
+const seats = async (event) => (await Event.findById(event._id)).seatsTaken;
 
 describe('POST /events/:id/registrations', () => {
-    it('401 без токена', async () => {
-        const event = await newEvent();
-        expect((await request(app).post(`/events/${event.id}/registrations`).send({})).status).toBe(401);
-    });
-
-    it('201 добавляет регистрацию во вложенный массив', async () => {
-        const event = await newEvent();
-        const res = await registerAs(anna, event, { name: 'Анна', tickets: 2 });
+    it('201: регистрация, занятые места и автоматическое напоминание за сутки', async () => {
+        const user = await createUser();
+        const event = await createEvent({ capacity: 10, startsAt: inDays(5) });
+        const res = await register(event, user, { tickets: 3, comment: 'Буду с коллегами' });
         expect(res.status).toBe(201);
-        expect(res.body).toMatchObject({ name: 'Анна', email: 'anna@b.c', tickets: 2, status: 'registered', user: anna.id });
-
-        const saved = await Event.findById(event.id);
-        expect(saved.registrations).toHaveLength(1);
-        expect(saved.seatsLeft).toBe(3);
+        expect(res.body).toMatchObject({ tickets: 3, status: 'registered', comment: 'Буду с коллегами' });
+        expect(res.body.autoReminder).toMatchObject({ offsetMinutes: 1440, kind: 'auto', status: 'pending' });
+        expect(await seats(event)).toBe(3);
     });
 
-    it('по умолчанию 1 билет и имя = email', async () => {
-        const event = await newEvent();
-        const res = await registerAs(anna, event);
-        expect(res.body).toMatchObject({ name: 'anna@b.c', tickets: 1 });
-    });
-
-    it('400 при некорректном числе билетов', async () => {
-        const event = await newEvent();
-        expect((await registerAs(anna, event, { tickets: 0 })).status).toBe(400);
-        expect((await registerAs(anna, event, { tickets: '2' })).status).toBe(400);
-    });
-
-    it('404 если мероприятия нет', async () => {
-        expect((await registerAs(anna, { id: missingId })).status).toBe(404);
+    it('если до начала меньше суток – напоминание за час, меньше часа – без напоминания', async () => {
+        const user = await createUser();
+        const soon = await createEvent({ startsAt: new Date(Date.now() + 5 * 3600e3) });
+        expect((await register(soon, user)).body.autoReminder.offsetMinutes).toBe(60);
+        const verySoon = await createEvent({ startsAt: new Date(Date.now() + 30 * 60e3) });
+        expect((await register(verySoon, user)).body.autoReminder).toBeNull();
     });
 
     it('409 при повторной регистрации', async () => {
-        const event = await newEvent();
-        await registerAs(anna, event);
-        expect((await registerAs(anna, event)).status).toBe(409);
-    });
-
-    it('409 если не хватает мест', async () => {
-        const event = await newEvent({ capacity: 2 });
-        await registerAs(anna, event, { tickets: 2 });
-        const res = await registerAs(ivan, event);
+        const user = await createUser();
+        const event = await createEvent();
+        await register(event, user);
+        const res = await register(event, user);
         expect(res.status).toBe(409);
-        expect(res.body.message).toMatch(/осталось: 0/);
+        expect(res.body.error.code).toBe('ALREADY_REGISTERED');
     });
 
-    it('без capacity места не ограничены', async () => {
-        const event = await newEvent({ capacity: undefined });
-        expect((await registerAs(anna, event, { tickets: 100 })).status).toBe(201);
-        const res = await request(app).get(`/events/${event.id}`);
-        expect(res.body.seatsLeft).toBeNull();
+    it('409 NO_SEATS, если мест не хватает', async () => {
+        const event = await createEvent({ capacity: 3 });
+        await register(event, await createUser(), { tickets: 2 });
+        const res = await register(event, await createUser(), { tickets: 2 });
+        expect(res.status).toBe(409);
+        expect(res.body.error).toMatchObject({ code: 'NO_SEATS', message: expect.stringContaining('свободно 1') });
     });
 
-    it('500 при ошибке', async () => {
-        const spy = jest.spyOn(Event, 'findById').mockImplementationOnce(() => { throw new Error('db'); });
-        expect((await registerAs(anna, { id: missingId })).status).toBe(500);
-        spy.mockRestore();
+    it('параллельные запросы не превышают вместимость (атомарное бронирование)', async () => {
+        const event = await createEvent({ capacity: 5 });
+        const users = await Promise.all(Array.from({ length: 10 }, () => createUser()));
+        const results = await Promise.all(users.map((u) => register(event, u)));
+        expect(results.filter((r) => r.status === 201)).toHaveLength(5);
+        expect(await seats(event)).toBe(5);
+        expect(await Registration.countDocuments()).toBe(5);
+    });
+
+    it('409 для прошедшего и отмененного мероприятия, 404 для отсутствующего', async () => {
+        const user = await createUser();
+        expect((await register(await createEvent({ startsAt: inDays(-1) }), user)).body.error.code).toBe('EVENT_PAST');
+        expect((await register(await createEvent({ status: 'cancelled' }), user)).body.error.code).toBe('EVENT_CANCELLED');
+        expect((await register({ id: '0'.repeat(24) }, user)).status).toBe(404);
+    });
+
+    it('422 при некорректном числе билетов, 401 без токена', async () => {
+        const event = await createEvent();
+        expect((await register(event, await createUser(), { tickets: 0 })).status).toBe(422);
+        expect((await register(event, await createUser(), { tickets: 11 })).status).toBe(422);
+        expect((await request(app).post(`/api/v1/events/${event.id}/registrations`)).status).toBe(401);
     });
 });
 
-describe('PATCH /events/:id/registrations/:regId (обновление элемента массива)', () => {
-    const setup = async () => {
-        const event = await newEvent();
-        const reg = (await registerAs(anna, event, { tickets: 1 })).body;
-        return { event, reg, url: `/events/${event.id}/registrations/${reg.id}` };
+describe('PATCH и DELETE /registrations/:id', () => {
+    const setup = async (capacity = 5) => {
+        const user = await createUser();
+        const event = await createEvent({ capacity });
+        const reg = (await register(event, user, { tickets: 2 })).body;
+        return { user, event, reg };
     };
 
-    it('владелец меняет число билетов через позиционный оператор $', async () => {
-        const { event, url } = await setup();
-        const res = await request(app).patch(url).set('Authorization', bearer(anna)).send({ tickets: 3 });
-        expect(res.status).toBe(200);
-        expect(res.body.tickets).toBe(3);
-        expect((await Event.findById(event.id)).seatsTaken).toBe(3);
+    it('владелец изменяет число билетов, места пересчитываются', async () => {
+        const { user, event, reg } = await setup();
+        const up = await request(app).patch(`/api/v1/registrations/${reg.id}`).set('Authorization', user.auth).send({ tickets: 4 });
+        expect(up.status).toBe(200);
+        expect(up.body.event).toMatchObject({ title: event.title });
+        expect(await seats(event)).toBe(4);
+        await request(app).patch(`/api/v1/registrations/${reg.id}`).set('Authorization', user.auth).send({ tickets: 1 });
+        expect(await seats(event)).toBe(1);
     });
 
-    it('администратор меняет статус', async () => {
-        const { url } = await setup();
-        const res = await request(app).patch(url).set('Authorization', admin()).send({ status: 'attended' });
-        expect(res.status).toBe(200);
+    it('409, если увеличение превышает вместимость', async () => {
+        const { user, reg } = await setup(3);
+        const res = await request(app).patch(`/api/v1/registrations/${reg.id}`).set('Authorization', user.auth).send({ tickets: 4 });
+        expect(res.status).toBe(409);
+    });
+
+    it('чужую регистрацию изменить нельзя (403), администратор может отметить посещение', async () => {
+        const { reg } = await setup();
+        const other = await createUser();
+        const admin = await createAdmin();
+        expect((await request(app).patch(`/api/v1/registrations/${reg.id}`).set('Authorization', other.auth).send({ tickets: 1 })).status).toBe(403);
+        const res = await request(app).patch(`/api/v1/registrations/${reg.id}`).set('Authorization', admin.auth).send({ status: 'attended' });
         expect(res.body.status).toBe('attended');
     });
 
-    it('403 для чужой регистрации', async () => {
-        const { url } = await setup();
-        expect((await request(app).patch(url).set('Authorization', bearer(ivan)).send({ tickets: 2 })).status).toBe(403);
+    it('пользователь не может сам поставить attended', async () => {
+        const { user, reg } = await setup();
+        const res = await request(app).patch(`/api/v1/registrations/${reg.id}`).set('Authorization', user.auth).send({ status: 'attended' });
+        expect(res.status).toBe(403);
     });
 
-    it('400 без полей, с неверным числом билетов или статусом', async () => {
-        const { url } = await setup();
-        const send = (data) => request(app).patch(url).set('Authorization', bearer(anna)).send(data);
-        expect((await send({})).status).toBe(400);
-        expect((await send({ tickets: -1 })).status).toBe(400);
-        expect((await send({ status: 'lost' })).status).toBe(400);
+    it('отмена освобождает места и удаляет неотправленные напоминания; затем можно зарегистрироваться снова', async () => {
+        const { user, event, reg } = await setup();
+        const res = await request(app).delete(`/api/v1/registrations/${reg.id}`).set('Authorization', user.auth);
+        expect(res.status).toBe(200);
+        expect(res.body.status).toBe('cancelled');
+        expect(await seats(event)).toBe(0);
+        expect(await Reminder.countDocuments({ user: user._id })).toBe(0);
+
+        const again = await register(event, user, { tickets: 1 });
+        expect(again.status).toBe(201);
+        expect(again.body.id).toBe(reg.id);
+        expect(await seats(event)).toBe(1);
     });
 
-    it('409 если увеличение превышает вместимость', async () => {
-        const { url } = await setup();
-        const res = await request(app).patch(url).set('Authorization', bearer(anna)).send({ tickets: 6 });
-        expect(res.status).toBe(409);
-    });
-
-    it('404 для несуществующей регистрации или мероприятия', async () => {
-        const { event } = await setup();
-        const auth = bearer(anna);
-        expect((await request(app).patch(`/events/${event.id}/registrations/${missingId}`).set('Authorization', auth).send({ tickets: 2 })).status).toBe(404);
-        expect((await request(app).patch(`/events/${missingId}/registrations/${missingId}`).set('Authorization', auth).send({ tickets: 2 })).status).toBe(404);
-    });
-
-    it('500 при ошибке', async () => {
-        const { url } = await setup();
-        const spy = jest.spyOn(Event, 'findOneAndUpdate').mockImplementationOnce(() => { throw new Error('db'); });
-        expect((await request(app).patch(url).set('Authorization', bearer(anna)).send({ tickets: 2 })).status).toBe(500);
-        spy.mockRestore();
+    it('404 для отсутствующей регистрации', async () => {
+        const user = await createUser();
+        expect((await request(app).delete(`/api/v1/registrations/${'0'.repeat(24)}`).set('Authorization', user.auth)).status).toBe(404);
     });
 });
 
-describe('DELETE /events/:id/registrations/:regId ($pull)', () => {
-    it('владелец отменяет регистрацию, элемент удаляется из массива', async () => {
-        const event = await newEvent();
-        const reg = (await registerAs(anna, event)).body;
-        await registerAs(ivan, event);
+describe('Мои регистрации и список участников', () => {
+    it('GET /auth/me/registrations – активные, по дате мероприятия', async () => {
+        const user = await createUser();
+        const later = await createEvent({ title: 'Позже', startsAt: inDays(20) });
+        const sooner = await createEvent({ title: 'Раньше', startsAt: inDays(2) });
+        const cancelled = await createEvent({ title: 'Отменю' });
+        await register(later, user);
+        await register(sooner, user);
+        const reg = (await register(cancelled, user)).body;
+        await request(app).delete(`/api/v1/registrations/${reg.id}`).set('Authorization', user.auth);
 
-        const res = await request(app).delete(`/events/${event.id}/registrations/${reg.id}`).set('Authorization', bearer(anna));
-        expect(res.status).toBe(204);
-        const saved = await Event.findById(event.id);
-        expect(saved.registrations.map((r) => r.email)).toEqual(['ivan@b.c']);
+        const res = await request(app).get('/api/v1/auth/me/registrations').set('Authorization', user.auth);
+        expect(res.body.map((r) => r.event.title)).toEqual(['Раньше', 'Позже']);
     });
 
-    it('403 для чужой, 404 для несуществующей', async () => {
-        const event = await newEvent();
-        const reg = (await registerAs(anna, event)).body;
-        expect((await request(app).delete(`/events/${event.id}/registrations/${reg.id}`).set('Authorization', bearer(ivan))).status).toBe(403);
-        expect((await request(app).delete(`/events/${event.id}/registrations/${missingId}`).set('Authorization', bearer(anna))).status).toBe(404);
-    });
+    it('администратор получает участников в JSON и CSV', async () => {
+        const admin = await createAdmin();
+        const user = await createUser({ name: 'Анна; Петрова' });
+        const event = await createEvent();
+        await register(event, user, { tickets: 2 });
 
-    it('500 при ошибке', async () => {
-        const event = await newEvent();
-        const reg = (await registerAs(anna, event)).body;
-        const spy = jest.spyOn(Event, 'updateOne').mockImplementationOnce(() => { throw new Error('db'); });
-        expect((await request(app).delete(`/events/${event.id}/registrations/${reg.id}`).set('Authorization', bearer(anna))).status).toBe(500);
-        spy.mockRestore();
+        const json = await request(app).get(`/api/v1/events/${event.id}/registrations`).set('Authorization', admin.auth);
+        expect(json.body[0]).toMatchObject({ tickets: 2, user: { name: 'Анна; Петрова', email: user.email } });
+
+        const csv = await request(app).get(`/api/v1/events/${event.id}/registrations?format=csv`).set('Authorization', admin.auth);
+        expect(csv.headers['content-type']).toMatch('text/csv');
+        expect(csv.text).toContain('Имя;Email;Билетов');
+        expect(csv.text).toContain('"Анна; Петрова"');
+
+        expect((await request(app).get(`/api/v1/events/${event.id}/registrations`).set('Authorization', user.auth)).status).toBe(403);
     });
 });

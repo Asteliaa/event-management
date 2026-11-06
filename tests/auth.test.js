@@ -1,194 +1,150 @@
-const { tokenFor, bearer, useMemoryDB } = require('./helpers');
+const { useMemoryDB, createUser } = require('./helpers');
 const request = require('supertest');
-const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
-const { User, Event } = require('../models');
-const app = require('../server');
+const app = require('../src/app');
+const { User } = require('../src/models');
 
 useMemoryDB();
 
-const createUser = async (email = 'a@b.c', password = 'pw', role = 'user') =>
-    User.create({ email, passwordHash: await bcrypt.hash(password, 4), role });
+const api = '/api/v1/auth';
+const valid = { name: 'Анна Петрова', email: 'Anna@Example.com', password: 'secret123' };
 
 describe('POST /auth/register', () => {
-    it('400 без email/password', async () => {
-        const res = await request(app).post('/auth/register').send({ email: 'a@b.c' });
-        expect(res.status).toBe(400);
-    });
-
-    it('201 и хеширует пароль', async () => {
-        const res = await request(app).post('/auth/register').send({ email: 'A@B.c', password: 'pw' });
+    it('201: создает пользователя, возвращает профиль без хеша и JWT', async () => {
+        const res = await request(app).post(`${api}/register`).send(valid);
         expect(res.status).toBe(201);
-        expect(res.body).toMatchObject({ email: 'a@b.c', role: 'user' });
-        expect(res.body.id).toMatch(/^[0-9a-f]{24}$/);
-        const saved = await User.findById(res.body.id);
-        expect(saved.passwordHash).not.toBe('pw');
-        expect(await bcrypt.compare('pw', saved.passwordHash)).toBe(true);
+        expect(res.body.user).toMatchObject({ name: 'Анна Петрова', email: 'anna@example.com', role: 'user' });
+        expect(res.body.user.passwordHash).toBeUndefined();
+        expect(jwt.verify(res.body.token, 'test-secret')).toMatchObject({ email: 'anna@example.com' });
+        const stored = await User.findOne({ email: 'anna@example.com' }).select('+passwordHash');
+        expect(stored.passwordHash).toMatch(/^\$2[aby]\$10\$/);
     });
 
-    it('409 если email занят (без учета регистра)', async () => {
-        await createUser();
-        const res = await request(app).post('/auth/register').send({ email: 'A@b.c', password: 'pw' });
+    it('409 при повторном email (без учета регистра)', async () => {
+        await request(app).post(`${api}/register`).send(valid);
+        const res = await request(app).post(`${api}/register`).send({ ...valid, email: 'ANNA@example.com' });
         expect(res.status).toBe(409);
-        expect(await User.countDocuments()).toBe(1);
+        expect(res.body.error.code).toBe('EMAIL_TAKEN');
     });
 
-    it('500 при ошибке БД', async () => {
-        const spy = jest.spyOn(User, 'findOne').mockRejectedValueOnce(new Error('db'));
-        const res = await request(app).post('/auth/register').send({ email: 'a@b.c', password: 'pw' });
-        expect(res.status).toBe(500);
-        spy.mockRestore();
+    it('422 с перечнем ошибок по полям', async () => {
+        const res = await request(app).post(`${api}/register`).send({ name: 'A', email: 'bad', password: 'short' });
+        expect(res.status).toBe(422);
+        expect(res.body.error.code).toBe('VALIDATION_ERROR');
+        const fields = res.body.error.details.map((d) => d.field);
+        expect(fields).toEqual(expect.arrayContaining(['body.name', 'body.email', 'body.password']));
+    });
+
+    it('422: пароль без цифры', async () => {
+        const res = await request(app).post(`${api}/register`).send({ ...valid, password: 'onlyletters' });
+        expect(res.status).toBe(422);
+        expect(res.body.error.details[0].message).toMatch(/цифру/);
+    });
+
+    it('лишние поля (role) игнорируются', async () => {
+        const res = await request(app).post(`${api}/register`).send({ ...valid, role: 'admin' });
+        expect(res.body.user.role).toBe('user');
     });
 });
 
 describe('POST /auth/login', () => {
-    it('400 без полей', async () => {
-        expect((await request(app).post('/auth/login').send({})).status).toBe(400);
-    });
-
-    it('401 если пользователь не найден', async () => {
-        const res = await request(app).post('/auth/login').send({ email: 'a@b.c', password: 'pw' });
-        expect(res.status).toBe(401);
-    });
-
-    it('401 при неверном пароле', async () => {
-        await createUser('a@b.c', 'other');
-        const res = await request(app).post('/auth/login').send({ email: 'a@b.c', password: 'pw' });
-        expect(res.status).toBe(401);
-    });
-
-    it('200 и валидный JWT с id, email, role и сроком 1 час', async () => {
-        const user = await createUser('a@b.c', 'pw', 'admin');
-        const res = await request(app).post('/auth/login').send({ email: 'a@b.c', password: 'pw' });
+    it('200 и токен при верных данных', async () => {
+        const user = await createUser({ email: 'ivan@test.local' });
+        const res = await request(app).post(`${api}/login`).send({ email: 'IVAN@test.local', password: 'secret123' });
         expect(res.status).toBe(200);
-        const decoded = jwt.verify(res.body.token, process.env.JWT_SECRET);
-        expect(decoded).toMatchObject({ id: user.id, email: 'a@b.c', role: 'admin' });
-        expect(decoded.exp - decoded.iat).toBe(3600);
+        expect(res.body.user.id).toBe(user.id);
+        expect(res.body.token).toBeDefined();
     });
 
-    it('500 при ошибке БД', async () => {
-        const spy = jest.spyOn(User, 'findOne').mockRejectedValueOnce(new Error('db'));
-        const res = await request(app).post('/auth/login').send({ email: 'a@b.c', password: 'pw' });
-        expect(res.status).toBe(500);
-        spy.mockRestore();
-    });
-});
-
-describe('GET /profile', () => {
-    it('401 без токена', async () => {
-        expect((await request(app).get('/profile')).status).toBe(401);
+    it('401 с одинаковым сообщением для неверного пароля и неизвестного email', async () => {
+        await createUser({ email: 'ivan@test.local' });
+        const a = await request(app).post(`${api}/login`).send({ email: 'ivan@test.local', password: 'wrong123' });
+        const b = await request(app).post(`${api}/login`).send({ email: 'nobody@test.local', password: 'wrong123' });
+        expect(a.status).toBe(401);
+        expect(b.status).toBe(401);
+        expect(a.body.error.message).toBe(b.body.error.message);
     });
 
-    it('401 с неверной схемой заголовка', async () => {
-        const res = await request(app).get('/profile').set('Authorization', `Token ${tokenFor()}`);
-        expect(res.status).toBe(401);
-    });
-
-    it('401 с мусорным токеном', async () => {
-        const res = await request(app).get('/profile').set('Authorization', 'Bearer garbage');
-        expect(res.status).toBe(401);
-    });
-
-    it('401 с токеном, подписанным другим ключом', async () => {
-        const bad = jwt.sign({ id: 1 }, 'other-secret');
-        const res = await request(app).get('/profile').set('Authorization', `Bearer ${bad}`);
-        expect(res.status).toBe(401);
-    });
-
-    it('401 с просроченным токеном', async () => {
-        const res = await request(app).get('/profile').set('Authorization', `Bearer ${tokenFor({}, { expiresIn: -10 })}`);
-        expect(res.status).toBe(401);
-    });
-
-    it('200 с валидным токеном, без passwordHash', async () => {
-        const user = await createUser();
-        const res = await request(app).get('/profile').set('Authorization', bearer(user));
-        expect(res.status).toBe(200);
-        expect(res.body).toMatchObject({ id: user.id, email: 'a@b.c', role: 'user' });
-        expect(res.body.passwordHash).toBeUndefined();
-    });
-
-    it('404 если пользователь удалён', async () => {
-        const res = await request(app).get('/profile').set('Authorization', `Bearer ${tokenFor()}`);
-        expect(res.status).toBe(404);
-    });
-
-    it('500 при ошибке БД', async () => {
-        const spy = jest.spyOn(User, 'findById').mockImplementationOnce(() => { throw new Error('db'); });
-        const res = await request(app).get('/profile').set('Authorization', `Bearer ${tokenFor()}`);
-        expect(res.status).toBe(500);
-        spy.mockRestore();
-    });
-});
-
-describe('GET /users и DELETE /users/:id (RBAC)', () => {
-    const admin = () => `Bearer ${tokenFor({ role: 'admin' })}`;
-
-    it('401 без токена', async () => {
-        expect((await request(app).get('/users')).status).toBe(401);
-    });
-
-    it('403 для обычного пользователя', async () => {
-        const res = await request(app).get('/users').set('Authorization', `Bearer ${tokenFor()}`);
+    it('403 для заблокированного пользователя', async () => {
+        await createUser({ email: 'blocked@test.local', blocked: true });
+        const res = await request(app).post(`${api}/login`).send({ email: 'blocked@test.local', password: 'secret123' });
         expect(res.status).toBe(403);
     });
+});
 
-    it('200 для администратора', async () => {
-        await createUser();
-        const res = await request(app).get('/users').set('Authorization', admin());
-        expect(res.status).toBe(200);
-        expect(res.body).toHaveLength(1);
-        expect(res.body[0].passwordHash).toBeUndefined();
-    });
-
-    it('500 при ошибке БД', async () => {
-        const spy = jest.spyOn(User, 'find').mockImplementationOnce(() => { throw new Error('db'); });
-        const res = await request(app).get('/users').set('Authorization', admin());
-        expect(res.status).toBe(500);
-        spy.mockRestore();
-    });
-
-    it('каскадно удаляет регистрации пользователя и возвращает удалённого', async () => {
+describe('Защищенные маршруты /auth/me', () => {
+    it('401 без токена, с неверным и с просроченным токеном', async () => {
         const user = await createUser();
-        const other = await createUser('x@y.z');
-        await Event.create({
-            title: 'T', type: 'webinar', date: '2026-11-05',
-            registrations: [
-                { user: user._id, name: 'A', email: user.email },
-                { user: other._id, name: 'X', email: other.email }
-            ]
-        });
+        const expired = jwt.sign({ id: user.id }, 'test-secret', { expiresIn: -1 });
+        expect((await request(app).get(`${api}/me`)).status).toBe(401);
+        expect((await request(app).get(`${api}/me`).set('Authorization', 'Bearer abc')).status).toBe(401);
+        expect((await request(app).get(`${api}/me`).set('Authorization', `Bearer ${expired}`)).status).toBe(401);
+    });
 
-        const res = await request(app).delete(`/users/${user.id}`).set('Authorization', admin());
+    it('401, если пользователь удален после выдачи токена', async () => {
+        const user = await createUser();
+        await User.deleteOne({ _id: user._id });
+        expect((await request(app).get(`${api}/me`).set('Authorization', user.auth)).status).toBe(401);
+    });
+
+    it('403, если пользователь заблокирован после выдачи токена', async () => {
+        const user = await createUser();
+        await User.updateOne({ _id: user._id }, { blocked: true });
+        expect((await request(app).get(`${api}/me`).set('Authorization', user.auth)).status).toBe(403);
+    });
+
+    it('GET /me возвращает профиль', async () => {
+        const user = await createUser({ city: 'Минск' });
+        const res = await request(app).get(`${api}/me`).set('Authorization', user.auth);
         expect(res.status).toBe(200);
-        expect(res.body.email).toBe('a@b.c');
-
-        const event = await Event.findOne();
-        expect(event.registrations.map((r) => r.email)).toEqual(['x@y.z']);
+        expect(res.body).toMatchObject({ id: user.id, city: 'Минск' });
     });
 
-    it('404 и 400 при удалении', async () => {
-        expect((await request(app).delete(`/users/${'0'.repeat(24)}`).set('Authorization', admin())).status).toBe(404);
-        expect((await request(app).delete('/users/1').set('Authorization', admin())).status).toBe(400);
+    it('PATCH /me изменяет имя и город', async () => {
+        const user = await createUser();
+        const res = await request(app).patch(`${api}/me`).set('Authorization', user.auth)
+            .send({ name: 'Новое имя', city: 'Брест', email: 'hack@x.y' });
+        expect(res.status).toBe(200);
+        expect(res.body).toMatchObject({ name: 'Новое имя', city: 'Брест', email: user.email });
     });
 
-    it('500 при ошибке удаления', async () => {
-        const spy = jest.spyOn(User, 'findByIdAndDelete').mockImplementationOnce(() => { throw new Error('db'); });
-        const res = await request(app).delete(`/users/${'0'.repeat(24)}`).set('Authorization', admin());
-        expect(res.status).toBe(500);
-        spy.mockRestore();
+    it('PUT /me/password: 400 при неверном текущем пароле, 204 и вход с новым', async () => {
+        const user = await createUser();
+        const bad = await request(app).put(`${api}/me/password`).set('Authorization', user.auth)
+            .send({ currentPassword: 'wrong', newPassword: 'newpass123' });
+        expect(bad.status).toBe(400);
+        const ok = await request(app).put(`${api}/me/password`).set('Authorization', user.auth)
+            .send({ currentPassword: 'secret123', newPassword: 'newpass123' });
+        expect(ok.status).toBe(204);
+        const login = await request(app).post(`${api}/login`).send({ email: user.email, password: 'newpass123' });
+        expect(login.status).toBe(200);
     });
 });
 
-describe('общее поведение', () => {
-    it('404 для неизвестного маршрута', async () => {
-        expect((await request(app).get('/nope')).status).toBe(404);
+describe('Общие ответы сервера', () => {
+    it('404 в едином формате для неизвестного адреса', async () => {
+        const res = await request(app).get('/api/v1/unknown');
+        expect(res.status).toBe(404);
+        expect(res.body.error).toMatchObject({ status: 404, code: 'NOT_FOUND' });
     });
 
-    it('400 при некорректном JSON', async () => {
-        const spy = jest.spyOn(console, 'error').mockImplementation(() => {});
-        const res = await request(app).post('/auth/login').set('Content-Type', 'application/json').send('{bad');
+    it('400 на некорректный JSON', async () => {
+        const res = await request(app).post(`${api}/login`).set('Content-Type', 'application/json').send('{bad');
         expect(res.status).toBe(400);
-        spy.mockRestore();
+        expect(res.body.error.message).toMatch(/JSON/);
+    });
+
+    it('helmet добавляет защитные заголовки', async () => {
+        const res = await request(app).get('/api/v1/health');
+        expect(res.headers['x-content-type-options']).toBe('nosniff');
+        expect(res.headers['x-powered-by']).toBeUndefined();
+        expect(res.status).toBe(200);
+    });
+
+    it('документация OpenAPI доступна', async () => {
+        const res = await request(app).get('/api/openapi.json');
+        expect(res.status).toBe(200);
+        expect(res.body.openapi).toMatch(/^3\./);
+        expect(Object.keys(res.body.paths).length).toBeGreaterThan(15);
     });
 });

@@ -1,16 +1,13 @@
-const jwt = require('jsonwebtoken');
 const mongoose = require('mongoose');
+const bcrypt = require('bcrypt');
 
+process.env.NODE_ENV = 'test';
 process.env.JWT_SECRET = 'test-secret';
 
-const tokenFor = (payload = {}, options = { expiresIn: '1h' }) =>
-    jwt.sign({ id: new mongoose.Types.ObjectId().toString(), email: 'a@b.c', role: 'user', ...payload },
-        process.env.JWT_SECRET, options);
+const { User, Event, Category } = require('../src/models');
+const { signToken } = require('../src/services/auth.service');
 
-const bearer = (user) => `Bearer ${tokenFor({ id: user.id, email: user.email, role: user.role })}`;
-
-// Временная MongoDB в памяти (tests/globalSetup.js): настоящий сервер MongoDB без Atlas и без моков,
-// у каждого файла тестов своя база
+// Временная MongoDB в памяти (tests/globalSetup.js), у каждого файла тестов своя база
 const useMemoryDB = () => {
     beforeAll(async () => {
         await mongoose.connect(process.env.MONGO_TEST_URI, {
@@ -18,6 +15,7 @@ const useMemoryDB = () => {
             // драйвер mongodb 7 загружает модуль os через import(), который не работает в песочнице Jest
             runtimeAdapters: { os: require('os') }
         });
+        await Promise.all(Object.values(mongoose.models).map((m) => m.syncIndexes()));
     });
     afterEach(async () => {
         await Promise.all(Object.values(mongoose.connection.collections).map((c) => c.deleteMany({})));
@@ -28,4 +26,29 @@ const useMemoryDB = () => {
     });
 };
 
-module.exports = { tokenFor, bearer, useMemoryDB };
+let counter = 0;
+const createUser = async (data = {}) => {
+    counter += 1;
+    const user = await User.create({
+        name: `Пользователь ${counter}`,
+        email: `user${counter}@test.local`,
+        passwordHash: await bcrypt.hash(data.password || 'secret123', 4),
+        ...data
+    });
+    return Object.assign(user, { auth: `Bearer ${signToken(user)}` });
+};
+
+const createAdmin = (data = {}) => createUser({ role: 'admin', ...data });
+
+const inDays = (days) => new Date(Date.now() + days * 864e5);
+
+const createEvent = (data = {}) => Event.create({
+    title: 'Тестовое мероприятие',
+    type: 'webinar',
+    startsAt: inDays(7),
+    ...data
+});
+
+const createCategory = (data = {}) => Category.create({ name: 'IT', slug: `it-${++counter}`, ...data });
+
+module.exports = { useMemoryDB, createUser, createAdmin, createEvent, createCategory, inDays };

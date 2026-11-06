@@ -1,65 +1,32 @@
-require('dotenv').config();
+// Точка входа: подключение к MongoDB, HTTP-сервер Express + Socket.IO, планировщик напоминаний
 const http = require('http');
-const express = require('express');
-const cors = require('cors');
-const mongoose = require('mongoose');
-const eventRoutes = require('./routes/eventRoutes');
-const authRoutes = require('./routes/auth');
-const profileRoutes = require('./routes/profile');
-const connectDB = require('./db');
-const createSocketServer = require('./socket');
+const config = require('./src/config');
+const connectDB = require('./src/config/db');
+const app = require('./src/app');
+const createSocketServer = require('./src/socket');
+const reminderScheduler = require('./src/jobs/reminderScheduler');
 
-const app = express();
-const PORT = process.env.PORT || 3000;
+const start = async () => {
+    if (!config.jwt.secret) throw new Error('Не задана переменная окружения JWT_SECRET');
+    await connectDB();
+    const server = http.createServer(app);
+    createSocketServer(server);
+    reminderScheduler.start();
+    server.listen(config.port, () => {
+        console.log(`Сервер: http://localhost:${config.port}/api/v1, документация: http://localhost:${config.port}/api/docs`);
+    });
 
-// CORS: разрешаем запросы от React-клиента (Vite, порт 5173)
-app.use(cors({ origin: process.env.CLIENT_URL || 'http://localhost:5173' }));
-app.use(express.json());
+    // Корректное завершение по сигналу (docker stop, Ctrl+C)
+    const shutdown = () => server.close(() => process.exit(0));
+    process.on('SIGTERM', shutdown);
+    process.on('SIGINT', shutdown);
+};
 
-// Проверка состояния для healthcheck в Docker (ЛР8): 200, если есть соединение с MongoDB
-app.get(['/health', '/api/health'], (req, res) => {
-    const db = mongoose.connection.readyState === 1 ? 'up' : 'down';
-    res.status(db === 'up' ? 200 : 503).json({ status: db === 'up' ? 'ok' : 'error', db, uptime: Math.round(process.uptime()) });
-});
-
-// Все маршруты API собраны в один роутер
-const api = express.Router();
-api.use('/auth', authRoutes);
-api.use('/', profileRoutes);
-api.use('/events', eventRoutes);
-
-// Клиент обращается по префиксу /api (VITE_API_URL=http://localhost:3000/api),
-// старые адреса без префикса (ЛР1–ЛР3) тоже работают
-app.use('/api', api);
-app.use('/', api);
-
-app.use((req, res, next) => {
-    res.status(404).json({ error: "Эндпоинт не найден" });
-});
-
-app.use((err, req, res, next) => {
-    if (err.type === 'entity.parse.failed') {
-        return res.status(400).json({ error: "Некорректный JSON в теле запроса" });
-    }
-    console.error(err.stack);
-    res.status(500).json({ error: "Внутренняя ошибка сервера" });
-});
-
-// Сервер начинает принимать запросы только после подключения к MongoDB.
-// Express и Socket.IO работают на одном HTTP-сервере и одном порту
 if (require.main === module) {
-    connectDB()
-        .then(() => {
-            const server = http.createServer(app);
-            createSocketServer(server);
-            server.listen(PORT, () => {
-                console.log(`Сервер запущен на http://localhost:${PORT} (REST API и Socket.IO)`);
-            });
-        })
-        .catch((err) => {
-            console.error('MongoDB connection error:', err.message);
-            process.exit(1);
-        });
+    start().catch((err) => {
+        console.error('Ошибка запуска:', err.message);
+        process.exit(1);
+    });
 }
 
 module.exports = app;

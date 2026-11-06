@@ -1,0 +1,570 @@
+openapi: 3.0.3
+info:
+  title: EventHub API
+  version: 1.0.0
+  description: |
+    REST API веб-приложения для организации конференций, вебинаров и встреч
+    с регистрацией участников и напоминаниями (курсовая работа, тема №11).
+
+    Все ответы с ошибкой имеют единый формат `{ "error": { "status", "code", "message", "details" } }`.
+    Списки с пагинацией возвращают `{ "data": [...], "meta": { "page", "limit", "total", "pages" } }`.
+servers:
+  - url: /api/v1
+tags:
+  - name: Auth
+    description: Регистрация, вход и профиль текущего пользователя
+  - name: Events
+    description: Каталог мероприятий
+  - name: Registrations
+    description: Регистрации на мероприятия
+  - name: Reminders
+    description: Напоминания о мероприятиях
+  - name: Categories
+    description: Категории мероприятий
+  - name: Admin
+    description: Администрирование
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    id:
+      name: id
+      in: path
+      required: true
+      schema: { type: string, example: 6650f1c2a1b2c3d4e5f60718 }
+  responses:
+    Error:
+      description: Ошибка
+      content:
+        application/json:
+          schema: { $ref: '#/components/schemas/Error' }
+    NoContent:
+      description: Успешно, без тела ответа
+  schemas:
+    Error:
+      type: object
+      properties:
+        error:
+          type: object
+          properties:
+            status: { type: integer, example: 422 }
+            code: { type: string, example: VALIDATION_ERROR }
+            message: { type: string, example: Ошибка валидации данных }
+            details:
+              type: array
+              items:
+                type: object
+                properties:
+                  field: { type: string, example: body.email }
+                  message: { type: string, example: Некорректный email }
+    Meta:
+      type: object
+      properties:
+        page: { type: integer, example: 1 }
+        limit: { type: integer, example: 12 }
+        total: { type: integer, example: 30 }
+        pages: { type: integer, example: 3 }
+    User:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string, example: Анна Петрова }
+        email: { type: string, example: anna@events.local }
+        role: { type: string, enum: [user, admin] }
+        city: { type: string, example: Минск }
+        blocked: { type: boolean }
+        favorites: { type: array, items: { type: string } }
+        createdAt: { type: string, format: date-time }
+    AuthResult:
+      type: object
+      properties:
+        user: { $ref: '#/components/schemas/User' }
+        token: { type: string, example: eyJhbGciOiJIUzI1NiIs... }
+    Category:
+      type: object
+      properties:
+        id: { type: string }
+        name: { type: string, example: IT и разработка }
+        slug: { type: string, example: it-i-razrabotka }
+        color: { type: string, example: '#6366f1' }
+        description: { type: string }
+        eventsCount: { type: integer, example: 4 }
+    CategoryInput:
+      type: object
+      required: [name]
+      properties:
+        name: { type: string, example: Дизайн }
+        color: { type: string, example: '#ec4899' }
+        description: { type: string }
+    Location:
+      type: object
+      properties:
+        city: { type: string, example: Минск }
+        venue: { type: string, example: Конгресс-холл }
+        online: { type: boolean, example: false }
+        url: { type: string, example: https://meet.example.com/abc }
+    Event:
+      type: object
+      properties:
+        id: { type: string }
+        title: { type: string, example: Конференция разработчиков 2026 }
+        description: { type: string }
+        type: { type: string, enum: [conference, webinar, meeting] }
+        status: { type: string, enum: [published, cancelled] }
+        category: { $ref: '#/components/schemas/Category' }
+        startsAt: { type: string, format: date-time }
+        endsAt: { type: string, format: date-time }
+        coverUrl: { type: string }
+        capacity: { type: integer, example: 300 }
+        seatsTaken: { type: integer, example: 120 }
+        seatsLeft: { type: integer, nullable: true, example: 180 }
+        isPast: { type: boolean }
+        location: { $ref: '#/components/schemas/Location' }
+        tags: { type: array, items: { type: string }, example: [it, backend] }
+    EventDetails:
+      allOf:
+        - $ref: '#/components/schemas/Event'
+        - type: object
+          description: Поля для авторизованного пользователя
+          properties:
+            myRegistration: { $ref: '#/components/schemas/Registration' }
+            myReminders: { type: array, items: { $ref: '#/components/schemas/Reminder' } }
+            isFavorite: { type: boolean }
+    EventInput:
+      type: object
+      required: [title, type, startsAt]
+      properties:
+        title: { type: string, example: Вебинар по React 19 }
+        description: { type: string }
+        type: { type: string, enum: [conference, webinar, meeting] }
+        status: { type: string, enum: [published, cancelled] }
+        category: { type: string, nullable: true }
+        startsAt: { type: string, format: date-time, example: '2026-12-15T15:00:00.000Z' }
+        endsAt: { type: string, format: date-time, nullable: true }
+        coverUrl: { type: string }
+        capacity: { type: integer, nullable: true, example: 100 }
+        location: { $ref: '#/components/schemas/Location' }
+        tags: { type: array, items: { type: string } }
+    EventPage:
+      type: object
+      properties:
+        data: { type: array, items: { $ref: '#/components/schemas/Event' } }
+        meta: { $ref: '#/components/schemas/Meta' }
+    Registration:
+      type: object
+      properties:
+        id: { type: string }
+        event: { oneOf: [{ type: string }, { $ref: '#/components/schemas/Event' }] }
+        user: { oneOf: [{ type: string }, { $ref: '#/components/schemas/User' }] }
+        tickets: { type: integer, example: 2 }
+        status: { type: string, enum: [registered, attended, cancelled] }
+        comment: { type: string }
+        createdAt: { type: string, format: date-time }
+    Reminder:
+      type: object
+      properties:
+        id: { type: string }
+        event: { oneOf: [{ type: string }, { $ref: '#/components/schemas/Event' }] }
+        offsetMinutes: { type: integer, example: 1440 }
+        remindAt: { type: string, format: date-time }
+        kind: { type: string, enum: [auto, custom] }
+        status: { type: string, enum: [pending, sent] }
+        sentAt: { type: string, format: date-time }
+        readAt: { type: string, format: date-time }
+    Stats:
+      type: object
+      properties:
+        totals:
+          type: object
+          properties:
+            events: { type: integer }
+            upcoming: { type: integer }
+            users: { type: integer }
+            registrations: { type: integer }
+            tickets: { type: integer }
+            remindersSent: { type: integer }
+        byType: { type: array, items: { type: object } }
+        byCategory: { type: array, items: { type: object } }
+        topEvents: { type: array, items: { $ref: '#/components/schemas/Event' } }
+        timeline: { type: array, items: { type: object, properties: { date: { type: string }, count: { type: integer } } } }
+paths:
+  /health:
+    get:
+      summary: Состояние сервера и БД
+      tags: [Admin]
+      responses:
+        '200': { description: Сервер и MongoDB работают }
+        '503': { description: Нет соединения с MongoDB }
+  /auth/register:
+    post:
+      tags: [Auth]
+      summary: Регистрация пользователя
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [name, email, password]
+              properties:
+                name: { type: string, example: Анна Петрова }
+                email: { type: string, example: anna@example.com }
+                password: { type: string, example: secret123, description: 'не короче 8 символов, буква и цифра' }
+      responses:
+        '201': { description: Создан, content: { application/json: { schema: { $ref: '#/components/schemas/AuthResult' } } } }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+  /auth/login:
+    post:
+      tags: [Auth]
+      summary: Вход, выдача JWT
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [email, password]
+              properties:
+                email: { type: string, example: admin@events.local }
+                password: { type: string, example: admin12345 }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/AuthResult' } } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '429': { $ref: '#/components/responses/Error' }
+  /auth/me:
+    get:
+      tags: [Auth]
+      summary: Профиль текущего пользователя
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/User' } } } }
+        '401': { $ref: '#/components/responses/Error' }
+    patch:
+      tags: [Auth]
+      summary: Изменение профиля
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                name: { type: string }
+                city: { type: string }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/User' } } } }
+        '422': { $ref: '#/components/responses/Error' }
+  /auth/me/password:
+    put:
+      tags: [Auth]
+      summary: Смена пароля
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [currentPassword, newPassword]
+              properties:
+                currentPassword: { type: string }
+                newPassword: { type: string }
+      responses:
+        '204': { $ref: '#/components/responses/NoContent' }
+        '400': { $ref: '#/components/responses/Error' }
+  /auth/me/registrations:
+    get:
+      tags: [Auth, Registrations]
+      summary: Мои регистрации
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: when, in: query, schema: { type: string, enum: [all, upcoming, past], default: all } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Registration' } } } } }
+  /auth/me/favorites:
+    get:
+      tags: [Auth]
+      summary: Избранные мероприятия
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Event' } } } } }
+  /auth/me/favorites/{id}:
+    parameters: [{ $ref: '#/components/parameters/id' }]
+    put:
+      tags: [Auth]
+      summary: Добавить мероприятие в избранное
+      security: [{ bearerAuth: [] }]
+      responses:
+        '204': { $ref: '#/components/responses/NoContent' }
+        '404': { $ref: '#/components/responses/Error' }
+    delete:
+      tags: [Auth]
+      summary: Убрать из избранного
+      security: [{ bearerAuth: [] }]
+      responses:
+        '204': { $ref: '#/components/responses/NoContent' }
+  /events:
+    get:
+      tags: [Events]
+      summary: Каталог мероприятий с фильтрами, сортировкой и пагинацией
+      parameters:
+        - { name: search, in: query, schema: { type: string }, description: Поиск по названию, описанию и тегам }
+        - { name: type, in: query, schema: { type: string, enum: [conference, webinar, meeting] } }
+        - { name: category, in: query, schema: { type: string } }
+        - { name: city, in: query, schema: { type: string } }
+        - { name: tag, in: query, schema: { type: string } }
+        - { name: online, in: query, schema: { type: string, enum: ['true', 'false'] } }
+        - { name: from, in: query, schema: { type: string, format: date } }
+        - { name: to, in: query, schema: { type: string, format: date } }
+        - { name: when, in: query, schema: { type: string, enum: [upcoming, past, all], default: upcoming } }
+        - { name: sort, in: query, schema: { type: string, enum: [date, -date, popular, new], default: date } }
+        - { name: page, in: query, schema: { type: integer, default: 1 } }
+        - { name: limit, in: query, schema: { type: integer, default: 12, maximum: 100 } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/EventPage' } } } }
+        '422': { $ref: '#/components/responses/Error' }
+    post:
+      tags: [Events]
+      summary: Создать мероприятие (администратор)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/EventInput' } } }
+      responses:
+        '201': { description: Создано, content: { application/json: { schema: { $ref: '#/components/schemas/Event' } } } }
+        '401': { $ref: '#/components/responses/Error' }
+        '403': { $ref: '#/components/responses/Error' }
+        '422': { $ref: '#/components/responses/Error' }
+  /events/cities:
+    get:
+      tags: [Events]
+      summary: Города, в которых проходят мероприятия
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { type: string } } } } }
+  /events/{id}:
+    parameters: [{ $ref: '#/components/parameters/id' }]
+    get:
+      tags: [Events]
+      summary: Карточка мероприятия (с токеном – и данные пользователя)
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/EventDetails' } } } }
+        '404': { $ref: '#/components/responses/Error' }
+    patch:
+      tags: [Events]
+      summary: Изменить мероприятие (администратор)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content: { application/json: { schema: { $ref: '#/components/schemas/EventInput' } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Event' } } } }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+    delete:
+      tags: [Events]
+      summary: Удалить мероприятие с регистрациями, напоминаниями и чатом (администратор)
+      security: [{ bearerAuth: [] }]
+      responses:
+        '204': { $ref: '#/components/responses/NoContent' }
+        '404': { $ref: '#/components/responses/Error' }
+  /events/{id}/similar:
+    parameters: [{ $ref: '#/components/parameters/id' }]
+    get:
+      tags: [Events]
+      summary: Похожие мероприятия
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Event' } } } } }
+  /events/{id}/calendar.ics:
+    parameters: [{ $ref: '#/components/parameters/id' }]
+    get:
+      tags: [Events]
+      summary: Файл iCalendar для добавления в календарь
+      responses:
+        '200': { description: Файл .ics, content: { text/calendar: { schema: { type: string } } } }
+  /events/{id}/registrations:
+    parameters: [{ $ref: '#/components/parameters/id' }]
+    post:
+      tags: [Registrations]
+      summary: Зарегистрироваться на мероприятие (создает автоматическое напоминание)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                tickets: { type: integer, minimum: 1, maximum: 10, default: 1 }
+                comment: { type: string }
+      responses:
+        '201': { description: Создано, content: { application/json: { schema: { $ref: '#/components/schemas/Registration' } } } }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { description: 'Уже зарегистрирован (ALREADY_REGISTERED), нет мест (NO_SEATS), мероприятие прошло (EVENT_PAST) или отменено (EVENT_CANCELLED)' }
+    get:
+      tags: [Registrations]
+      summary: Участники мероприятия (администратор); format=csv – выгрузка
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: format, in: query, schema: { type: string, enum: [json, csv], default: json } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Registration' } } }, text/csv: {} } }
+  /registrations/{id}:
+    parameters: [{ $ref: '#/components/parameters/id' }]
+    patch:
+      tags: [Registrations]
+      summary: Изменить число билетов, комментарий или статус (attended – только администратор)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                tickets: { type: integer }
+                status: { type: string, enum: [registered, attended, cancelled] }
+                comment: { type: string }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Registration' } } } }
+        '403': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+    delete:
+      tags: [Registrations]
+      summary: Отменить регистрацию (места освобождаются, напоминания удаляются)
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Registration' } } } }
+        '403': { $ref: '#/components/responses/Error' }
+        '404': { $ref: '#/components/responses/Error' }
+  /reminders:
+    get:
+      tags: [Reminders]
+      summary: Мои напоминания
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: status, in: query, schema: { type: string, enum: [pending, sent] } }
+        - { name: unread, in: query, schema: { type: string, enum: ['true', 'false'] } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Reminder' } } } } }
+    post:
+      tags: [Reminders]
+      summary: Создать напоминание
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [event, offsetMinutes]
+              properties:
+                event: { type: string }
+                offsetMinutes: { type: integer, example: 60, description: 'за сколько минут до начала (5 мин – 30 дней)' }
+      responses:
+        '201': { description: Создано, content: { application/json: { schema: { $ref: '#/components/schemas/Reminder' } } } }
+        '400': { $ref: '#/components/responses/Error' }
+        '409': { $ref: '#/components/responses/Error' }
+  /reminders/read-all:
+    post:
+      tags: [Reminders]
+      summary: Отметить все уведомления прочитанными
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { updated: { type: integer } } } } } }
+  /reminders/{id}:
+    parameters: [{ $ref: '#/components/parameters/id' }]
+    patch:
+      tags: [Reminders]
+      summary: Изменить интервал или отметить прочитанным
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                offsetMinutes: { type: integer }
+                read: { type: boolean }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Reminder' } } } }
+        '404': { $ref: '#/components/responses/Error' }
+    delete:
+      tags: [Reminders]
+      summary: Удалить напоминание
+      security: [{ bearerAuth: [] }]
+      responses:
+        '204': { $ref: '#/components/responses/NoContent' }
+  /categories:
+    get:
+      tags: [Categories]
+      summary: Категории с числом предстоящих мероприятий
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Category' } } } } }
+    post:
+      tags: [Categories]
+      summary: Создать категорию (администратор)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content: { application/json: { schema: { $ref: '#/components/schemas/CategoryInput' } } }
+      responses:
+        '201': { description: Создано, content: { application/json: { schema: { $ref: '#/components/schemas/Category' } } } }
+        '409': { $ref: '#/components/responses/Error' }
+  /categories/{id}:
+    parameters: [{ $ref: '#/components/parameters/id' }]
+    patch:
+      tags: [Categories]
+      summary: Изменить категорию (администратор)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content: { application/json: { schema: { $ref: '#/components/schemas/CategoryInput' } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Category' } } } }
+    delete:
+      tags: [Categories]
+      summary: Удалить категорию (мероприятия остаются без категории)
+      security: [{ bearerAuth: [] }]
+      responses:
+        '204': { $ref: '#/components/responses/NoContent' }
+  /admin/stats:
+    get:
+      tags: [Admin]
+      summary: Статистика для панели администратора
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Stats' } } } }
+  /admin/users:
+    get:
+      tags: [Admin]
+      summary: Пользователи
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: search, in: query, schema: { type: string } }
+        - { name: role, in: query, schema: { type: string, enum: [user, admin] } }
+        - { name: page, in: query, schema: { type: integer } }
+        - { name: limit, in: query, schema: { type: integer } }
+      responses:
+        '200': { description: OK }
+  /admin/users/{id}:
+    parameters: [{ $ref: '#/components/parameters/id' }]
+    patch:
+      tags: [Admin]
+      summary: Изменить роль или заблокировать
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                role: { type: string, enum: [user, admin] }
+                blocked: { type: boolean }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/User' } } } }
+    delete:
+      tags: [Admin]
+      summary: Удалить пользователя
+      security: [{ bearerAuth: [] }]
+      responses:
+        '204': { $ref: '#/components/responses/NoContent' }

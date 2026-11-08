@@ -1,5 +1,6 @@
-// Обложка показывается, только если организатор загрузил изображение по ссылке
+import { PosterCover } from './EventCard.jsx';
+
+// Крупная обложка страницы мероприятия: изображение организатора или типографическая обложка
 export default function EventCover({ event }) {
-  if (!event.coverUrl) return null;
-  return <img className="cover-img" src={event.coverUrl} alt="" loading="lazy" />;
+  return <PosterCover event={event} className="event-cover" dateSize="lg" />;
 }

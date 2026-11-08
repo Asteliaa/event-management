@@ -6,31 +6,31 @@ body {
   margin: 0;
   font-family: var(--font);
   font-size: var(--fs-md);
-  line-height: 1.5;
+  line-height: 1.55;
   color: var(--text);
   background: var(--bg);
   -webkit-font-smoothing: antialiased;
 }
 
-h1, h2, h3 { margin: 0 0 var(--sp-3); line-height: 1.05; font-weight: 800; color: var(--text); letter-spacing: -.02em; text-wrap: balance; }
+h1, h2, h3 { margin: 0 0 var(--sp-3); line-height: 1.1; font-weight: 800; color: var(--text); letter-spacing: -.02em; text-wrap: balance; }
 h1 { font-size: var(--fs-2xl); }
 h2 { font-size: var(--fs-xl); }
 h3 { font-size: var(--fs-lg); }
 p { margin: 0 0 var(--sp-3); }
 a { color: var(--link); text-decoration: none; font-weight: 500; }
-a:hover { color: var(--text); text-decoration: underline; text-decoration-thickness: 2px; text-underline-offset: 4px; }
+a:hover { text-decoration: underline; text-underline-offset: 3px; }
 img { max-width: 100%; display: block; }
 dl, dd { margin: 0; }
 small { font-size: var(--fs-sm); }
 
-/* Поля ввода: одинаковая высота, рамка, фокус и состояние ошибки для всех форм */
+/* Поля ввода: одинаковая высота, рамка, фокус и ошибка для всех форм */
 input, select, textarea, button { font: inherit; color: inherit; }
 input, select, textarea {
   width: 100%;
   min-height: var(--control);
   padding: 0 var(--sp-3);
-  border: var(--bw) solid var(--line);
-  border-radius: var(--radius);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
   background: var(--surface);
   font-size: var(--fs-sm);
   line-height: 1.4;
@@ -40,21 +40,22 @@ textarea { padding: 10px var(--sp-3); resize: vertical; min-height: 104px; }
 select {
   appearance: none;
   padding-right: 36px;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%2316151b' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4 6 4 4 4-4'/%3E%3C/svg%3E");
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%2366616d' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4 6 4 4 4-4'/%3E%3C/svg%3E");
   background-repeat: no-repeat;
   background-position: right 12px center;
   cursor: pointer;
   text-overflow: ellipsis;
 }
+[data-theme='dark'] select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%23b3acbc' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4 6 4 4 4-4'/%3E%3C/svg%3E"); }
 input::placeholder, textarea::placeholder { color: var(--muted); opacity: 1; }
-input:hover:not(:disabled), select:hover:not(:disabled), textarea:hover:not(:disabled) { background-color: var(--bg); }
-input:focus, select:focus, textarea:focus { outline: none; border-color: var(--line); box-shadow: 0 0 0 3px var(--primary-ring); }
-input:disabled, select:disabled, textarea:disabled { background: var(--surface-2); color: var(--muted); border-color: var(--border-strong); cursor: not-allowed; }
+input:hover:not(:disabled), select:hover:not(:disabled), textarea:hover:not(:disabled) { border-color: var(--muted); }
+input:focus, select:focus, textarea:focus { outline: none; border-color: var(--primary); box-shadow: 0 0 0 3px var(--primary-ring); }
+input:disabled, select:disabled, textarea:disabled { background: var(--surface-2); color: var(--muted); cursor: not-allowed; }
 input[type='color'] { padding: 4px; cursor: pointer; }
-input[type='checkbox'] { width: 20px; height: 20px; min-height: 0; margin: 0; padding: 0; accent-color: var(--cobalt); cursor: pointer; }
+input[type='checkbox'] { width: 20px; height: 20px; min-height: 0; margin: 0; padding: 0; accent-color: var(--primary); cursor: pointer; }
 input[type='search']::-webkit-search-cancel-button { cursor: pointer; }
-:focus-visible { outline: 3px solid var(--cobalt); outline-offset: 2px; }
-::selection { background: var(--red); color: var(--on-red); }
+:focus-visible { outline: 3px solid var(--primary-ring); outline-offset: 2px; }
+::selection { background: var(--accent); color: var(--on-accent); }
 
 /* Каркас страницы */
 .container { width: 100%; max-width: var(--container); margin: 0 auto; padding: 0 var(--sp-6); }
@@ -62,13 +63,14 @@ input[type='search']::-webkit-search-cancel-button { cursor: pointer; }
 .main { flex: 1; padding-bottom: var(--sp-12); }
 .page { padding-top: var(--sp-8); }
 .page__head { margin-bottom: var(--sp-6); }
-.page__head h1 { margin-bottom: var(--sp-2); font-size: var(--fs-3xl); font-weight: 900; text-transform: uppercase; letter-spacing: -.03em; line-height: .95; text-shadow: 3px 3px 0 var(--red); }
+.page__head h1 { margin-bottom: var(--sp-2); font-size: var(--fs-3xl); font-weight: 900; letter-spacing: -.03em; line-height: 1.05; }
 .page__head p { margin: 0; }
 .page__head--row { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); flex-wrap: wrap; margin-bottom: 0; }
 .page__head--row h1 { margin: 0; }
-.section { padding-top: var(--sp-16); }
+.section { padding-top: var(--sp-12); }
 .section__head { display: flex; justify-content: space-between; align-items: flex-end; gap: var(--sp-3); flex-wrap: wrap; margin-bottom: var(--sp-5); }
-.section__head h2 { margin: 0; font-size: clamp(1.75rem, 1.2rem + 2vw, 2.75rem); font-weight: 900; text-transform: uppercase; letter-spacing: -.02em; line-height: .95; }
+.section__head h2 { margin: 0; font-size: clamp(1.5rem, 1.15rem + 1.3vw, 2.125rem); font-weight: 900; letter-spacing: -.03em; }
+.section__head a { font-weight: 600; }
 
 /* Вспомогательные классы */
 .grid { display: grid; gap: var(--sp-5); }
@@ -80,8 +82,8 @@ input[type='search']::-webkit-search-cancel-button { cursor: pointer; }
 .muted { color: var(--muted); }
 .small { font-size: var(--fs-sm); }
 .center { text-align: center; }
-.lead { font-family: var(--font-serif); font-size: 1.25rem; color: var(--text-2); max-width: 32em; line-height: 1.55; }
-.mono-label { font-family: var(--font-mono); font-size: var(--fs-xs); font-weight: 600; text-transform: uppercase; letter-spacing: .08em; }
+.lead { font-size: 1.1875rem; color: var(--text-2); max-width: 34em; line-height: 1.55; }
+.mono-label { font-size: var(--fs-xs); font-weight: 600; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
 .show-mobile, .only-mobile { display: none !important; }
 .nowrap { white-space: nowrap; }
 
@@ -101,8 +103,7 @@ input[type='search']::-webkit-search-cancel-button { cursor: pointer; }
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
 }
-[data-theme='dark'] select { background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' fill='none' stroke='%23f6eedf' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m4 6 4 4 4-4'/%3E%3C/svg%3E"); }
 
 /* Ссылка «перейти к содержимому» для клавиатуры */
-.skip-link { position: absolute; left: var(--sp-4); top: -60px; z-index: 200; padding: var(--sp-2) var(--sp-4); border: var(--bw) solid var(--line); background: var(--red); color: var(--on-red); font-weight: 700; }
+.skip-link { position: absolute; left: var(--sp-4); top: -60px; z-index: 200; padding: var(--sp-2) var(--sp-4); border-radius: var(--radius-sm); background: var(--primary); color: var(--on-primary); font-weight: 700; }
 .skip-link:focus { top: var(--sp-3); }

@@ -5,7 +5,7 @@ import { useFetch } from '../hooks/useFetch.js';
 import { useDebounce } from '../hooks/useDebounce.js';
 import { useDocumentTitle } from '../hooks/useDocumentTitle.js';
 import { eventsApi } from '../api/index.js';
-import EventRow, { EventRowSkeleton } from '../components/events/EventCard.jsx';
+import EventCard, { EventCardSkeleton } from '../components/events/EventCard.jsx';
 import EventFilters from '../components/events/EventFilters.jsx';
 import { EmptyState, ErrorState, Pagination } from '../components/ui/index.jsx';
 import { plural } from '../utils/format.js';
@@ -33,7 +33,7 @@ export default function CatalogPage() {
     setParams(next, { replace: key === 'search' });
   }
 
-  const query = Object.fromEntries(Object.entries({ ...values, limit: 10 }).filter(([, v]) => v));
+  const query = Object.fromEntries(Object.entries({ ...values, limit: 12 }).filter(([, v]) => v));
   const { data, loading, error, reload } = useFetch((signal) => eventsApi.list(query, signal), [params.toString()]);
 
   return (
@@ -53,9 +53,9 @@ export default function CatalogPage() {
 
       {error && <ErrorState message={error} onRetry={reload} />}
       {!error && (
-        <div className={`agenda ${loading && data ? 'is-loading' : ''}`}>
-          {loading && !data && Array.from({ length: 6 }, (_, i) => <EventRowSkeleton key={i} />)}
-          {data?.data.map((e) => <EventRow key={e.id} event={e} />)}
+        <div className={`posters ${loading && data ? 'is-loading' : ''}`}>
+          {loading && !data && Array.from({ length: 6 }, (_, i) => <EventCardSkeleton key={i} />)}
+          {data?.data.map((e) => <EventCard key={e.id} event={e} />)}
         </div>
       )}
       {data && data.data.length === 0 && !loading && (

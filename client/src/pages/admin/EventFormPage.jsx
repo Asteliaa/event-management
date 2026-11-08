@@ -6,7 +6,7 @@ import { useDocumentTitle } from '../../hooks/useDocumentTitle.js';
 import { categoriesApi, eventsApi } from '../../api/index.js';
 import { getErrorMessage, getFieldErrors } from '../../api/client.js';
 import { useNotifications } from '../../context/NotificationContext.jsx';
-import EventRow from '../../components/events/EventCard.jsx';
+import EventCard from '../../components/events/EventCard.jsx';
 import { Field, Spinner } from '../../components/ui/index.jsx';
 import { TYPE_LABELS, toLocalInput } from '../../utils/format.js';
 
@@ -145,7 +145,7 @@ export default function EventFormPage() {
         </div>
         <aside className="form-preview">
           <p className="muted small">Предпросмотр в каталоге</p>
-          <div className="agenda"><EventRow event={{ ...preview, title: form.title || 'Название мероприятия', seatsTaken: 0, seatsLeft: preview.capacity }} /></div>
+          <EventCard event={{ ...preview, title: form.title || 'Название мероприятия', seatsTaken: 0, seatsLeft: preview.capacity }} />
         </aside>
       </div>
     </form>

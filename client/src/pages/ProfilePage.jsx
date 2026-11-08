@@ -7,7 +7,7 @@ import { useFetch } from '../hooks/useFetch.js';
 import { useDocumentTitle } from '../hooks/useDocumentTitle.js';
 import { authApi, remindersApi } from '../api/index.js';
 import { getErrorMessage, getFieldErrors } from '../api/client.js';
-import EventRow, { DateBlock } from '../components/events/EventCard.jsx';
+import EventCard, { DateBlock } from '../components/events/EventCard.jsx';
 import { EmptyState, ErrorState, Field, Spinner } from '../components/ui/index.jsx';
 import { STATUS_LABELS, TYPE_LABELS, formatDateTime, formatOffset, formatTime, placeOf, timeUntil } from '../utils/format.js';
 
@@ -59,15 +59,15 @@ export function MyRegistrations() {
           <Link to="/events" className="btn btn--primary">Перейти в каталог</Link>
         </EmptyState>
       )}
-      <div className="timeline">
+      <div className="ticket-list">
         {data?.map((r) => (
-          <Link key={r.id} to={`/events/${r.event.id}`} className="timeline__item">
+          <Link key={r.id} to={`/events/${r.event.id}`} className="ticket-row">
             <DateBlock date={r.event.startsAt} size="sm" />
-            <div className="timeline__body">
+            <div className="ticket-row__body">
               <h3>{r.event.title}</h3>
               <p className="muted">{TYPE_LABELS[r.event.type]}, {formatTime(r.event.startsAt)}, {placeOf(r.event)}</p>
             </div>
-            <div className="timeline__side">
+            <div className="ticket-row__side">
               <span className={`chip chip--status-${r.status}`}>{STATUS_LABELS[r.status]}</span>
               <small className="muted">{r.tickets} {r.tickets === 1 ? 'билет' : 'билета'}, {timeUntil(r.event.startsAt)}</small>
             </div>
@@ -84,7 +84,7 @@ export function MyFavorites() {
   if (loading && !data) return <Spinner />;
   if (error) return <ErrorState message={error} onRetry={reload} />;
   if (!data.length) return <EmptyState icon={Heart} title="В избранном пусто" text="Нажмите «В избранное» на странице мероприятия." />;
-  return <div className="agenda">{data.map((e) => <EventRow key={e.id} event={e} />)}</div>;
+  return <div className="posters">{data.map((e) => <EventCard key={e.id} event={e} />)}</div>;
 }
 
 export function MyReminders() {

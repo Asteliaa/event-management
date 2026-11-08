@@ -10,7 +10,7 @@ import { getErrorMessage } from '../api/client.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useNotifications } from '../context/NotificationContext.jsx';
 import EventCover from '../components/events/EventCover.jsx';
-import EventRow, { CategoryMark, DateBlock, SeatsBar } from '../components/events/EventCard.jsx';
+import EventCard, { CategoryMark, SeatsBar } from '../components/events/EventCard.jsx';
 import EventChat from '../components/events/EventChat.jsx';
 import ReminderPanel from '../components/events/ReminderPanel.jsx';
 import { ConfirmDialog, ErrorState, Spinner } from '../components/ui/index.jsx';
@@ -189,29 +189,26 @@ export default function EventPage() {
     <div className="event-page container">
       <button type="button" className="back-link" onClick={() => navigate(-1)}><ArrowLeft size={16} /> Назад</button>
 
-      <header className="event-head card">
-        <DateBlock date={event.startsAt} size="lg" />
-        <div className="event-head__text">
-          <p className="event-row__kicker">
-            <span className={`type type--${event.type}`}>{TYPE_LABELS[event.type]}</span>
-            <CategoryMark category={event.category} />
-            {event.status === 'cancelled' && <span className="flag flag--danger">Отменено</span>}
-          </p>
-          <h1 className="event-head__title">{event.title}</h1>
-          <ul className="event-meta">
-            <li>
-              <CalendarDays size={16} />
-              <span>{formatDate(event.startsAt)}, {formatTime(event.startsAt)}{event.endsAt && `–${formatTime(event.endsAt)}`}</span>
-            </li>
-            <li>{event.location?.online ? <Video size={16} /> : <MapPin size={16} />}<span>{placeOf(event)}</span></li>
-            <li><User size={16} /><span>{event.organizer?.name || 'EventHub'}</span></li>
-          </ul>
-        </div>
-      </header>
+      <EventCover event={event} />
 
       <div className="event-page__layout">
         <article className="event-page__main">
-          <EventCover event={event} />
+          <header className="event-head">
+            <p className="poster__kicker">
+              <span className={`type type--${event.type}`}>{TYPE_LABELS[event.type]}</span>
+              <CategoryMark category={event.category} />
+              {event.status === 'cancelled' && <span className="flag flag--danger">Отменено</span>}
+            </p>
+            <h1 className="event-head__title">{event.title}</h1>
+            <ul className="event-meta">
+              <li>
+                <CalendarDays size={16} />
+                <span>{formatDate(event.startsAt)}, {formatTime(event.startsAt)}{event.endsAt && `–${formatTime(event.endsAt)}`}</span>
+              </li>
+              <li>{event.location?.online ? <Video size={16} /> : <MapPin size={16} />}<span>{placeOf(event)}</span></li>
+              <li><User size={16} /><span>{event.organizer?.name || 'EventHub'}</span></li>
+            </ul>
+          </header>
 
           <div className="event-page__actions">
             {isAuthenticated && (
@@ -258,7 +255,7 @@ export default function EventPage() {
       {similar?.length > 0 && (
         <section className="section">
           <div className="section__head"><h2>Похожие мероприятия</h2></div>
-          <div className="agenda">{similar.map((e) => <EventRow key={e.id} event={e} />)}</div>
+          <div className="posters">{similar.map((e) => <EventCard key={e.id} event={e} />)}</div>
         </section>
       )}
     </div>

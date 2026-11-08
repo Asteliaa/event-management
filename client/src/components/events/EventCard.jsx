@@ -5,13 +5,13 @@ import { TYPE_LABELS, formatTime, placeOf } from '../../utils/format.js';
 const monthFmt = new Intl.DateTimeFormat('ru-RU', { month: 'short' });
 const weekdayFmt = new Intl.DateTimeFormat('ru-RU', { weekday: 'short' });
 
-// Дата в виде листка календаря: месяц, число и день недели
+// Штамп даты, похожий на корешок билета: число, месяц и (в крупном размере) день недели
 export function DateBlock({ date, size = 'md' }) {
   const d = new Date(date);
   return (
     <span className={`date-block date-block--${size}`}>
-      <span className="date-block__month">{monthFmt.format(d).replace('.', '')}</span>
       <span className="date-block__day">{d.getDate()}</span>
+      <span className="date-block__month">{monthFmt.format(d).replace('.', '')}</span>
       <span className="date-block__wd">{weekdayFmt.format(d)}</span>
     </span>
   );
@@ -36,36 +36,47 @@ export function CategoryMark({ category }) {
   return <span className="cat-mark" style={{ '--cat': category.color }}>{category.name}</span>;
 }
 
-// Карточка-строка списка мероприятий: дата, формат и тема, название, время и место, свободные места
-export default function EventRow({ event, compact = false }) {
+// Обложка афиши: изображение организатора или типографическая обложка из категории и формата
+export function PosterCover({ event, className = '', dateSize = 'md' }) {
   return (
-    <Link to={`/events/${event.id}`} className={`event-row ${compact ? 'event-row--compact' : ''} ${event.status === 'cancelled' ? 'is-cancelled' : ''}`}>
-      <DateBlock date={event.startsAt} size={compact ? 'sm' : 'md'} />
-      <span className="event-row__main">
-        <span className="event-row__kicker">
-          <span className={`type type--${event.type}`}>{TYPE_LABELS[event.type]}</span>
+    <span className={`poster__cover poster__cover--${event.type} ${className}`} style={{ '--cat': event.category?.color }}>
+      {event.coverUrl && <img src={event.coverUrl} alt="" loading="lazy" />}
+      <DateBlock date={event.startsAt} size={dateSize} />
+      <span className="poster__format">{TYPE_LABELS[event.type]}</span>
+      {!event.coverUrl && <span className="poster__word" aria-hidden="true">{event.category?.name || TYPE_LABELS[event.type]}</span>}
+    </span>
+  );
+}
+
+// Афиша мероприятия для каталога и подборок: обложка, тема, название, время, место и свободные места
+export default function EventCard({ event, feature = false }) {
+  return (
+    <Link to={`/events/${event.id}`} className={`poster ${feature ? 'poster--feature' : ''} ${event.status === 'cancelled' ? 'is-cancelled' : ''}`}>
+      <PosterCover event={event} dateSize={feature ? 'lg' : 'md'} />
+      <span className="poster__body">
+        <span className="poster__kicker">
           <CategoryMark category={event.category} />
           {event.status === 'cancelled' && <span className="flag flag--danger">Отменено</span>}
         </span>
-        <span className="event-row__title">{event.title}</span>
-        <span className="event-row__place">
+        <span className="poster__title">{event.title}</span>
+        <span className="poster__meta">
           <span><Clock size={14} /> {formatTime(event.startsAt)}</span>
-          <span>{event.location?.online ? <Video size={14} /> : <MapPin size={14} />} {placeOf(event)}</span>
+          <span>{event.location?.online ? <Video size={14} /> : <MapPin size={14} />} <span className="nowrap-ellipsis">{placeOf(event)}</span></span>
         </span>
+        <span className="poster__foot"><SeatsBar event={event} /></span>
       </span>
-      {!compact && <span className="event-row__side"><SeatsBar event={event} /></span>}
     </Link>
   );
 }
 
-export function EventRowSkeleton({ compact = false }) {
+export function EventCardSkeleton() {
   return (
-    <div className={`event-row skeleton ${compact ? 'event-row--compact' : ''}`} aria-hidden="true">
-      <span className={`date-block date-block--${compact ? 'sm' : 'md'}`} />
-      <span className="event-row__main">
-        <span className="skeleton__line" style={{ width: '30%' }} />
-        <span className="skeleton__line skeleton__line--lg" style={{ width: '70%' }} />
-        <span className="skeleton__line" style={{ width: '45%' }} />
+    <div className="poster skeleton" aria-hidden="true">
+      <span className="poster__cover" />
+      <span className="poster__body">
+        <span className="skeleton__line" style={{ width: '35%' }} />
+        <span className="skeleton__line skeleton__line--lg" style={{ width: '85%' }} />
+        <span className="skeleton__line" style={{ width: '50%' }} />
       </span>
     </div>
   );

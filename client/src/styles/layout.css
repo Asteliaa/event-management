@@ -18,16 +18,16 @@
 .burger { display: none; }
 
 /* ---------- Подвал ---------- */
-.footer { margin-top: var(--sp-12); background: #211f1b; color: #efe6d3; padding: var(--sp-10) 0; font-size: var(--fs-sm); border-top: 3px solid var(--red); }
-[data-theme='dark'] .footer { background: #12110f; border-top: var(--bw) solid var(--line); }
+.footer { margin-top: var(--sp-12); background: var(--night); color: var(--night-fg); padding: var(--sp-10) 0; font-size: var(--fs-sm); border-top: 3px solid var(--red); }
+[data-theme='dark'] .footer { background: var(--night); border-top: var(--bw) solid var(--line); }
 .footer__inner { display: flex; justify-content: space-between; align-items: flex-end; gap: var(--sp-6); flex-wrap: wrap; }
 .footer__brand { display: flex; flex-direction: column; gap: var(--sp-2); }
-.footer__brand b { font-size: clamp(2.25rem, 1.2rem + 4vw, 4.5rem); font-weight: 900; letter-spacing: -.04em; line-height: .9; text-transform: uppercase; text-shadow: 3px 3px 0 var(--red); }
+.footer__brand b { font-size: clamp(2.25rem, 1.2rem + 4vw, 4.5rem); font-weight: 900; letter-spacing: -.04em; line-height: .9; text-transform: uppercase; text-shadow: 3px 3px 0 var(--night-accent); }
 .footer__brand b span { color: inherit; }
-.footer__brand small { color: #c9bfa9; font-size: var(--fs-sm); }
+.footer__brand small { color: var(--night-muted); font-size: var(--fs-sm); }
 .footer nav { display: flex; gap: var(--sp-2); flex-wrap: wrap; }
-.footer nav a { display: inline-flex; align-items: center; height: 36px; padding: 0 var(--sp-4); border: var(--bw) solid #efe6d3; color: #efe6d3; font-family: var(--font-mono); font-size: var(--fs-xs); font-weight: 700; text-transform: uppercase; letter-spacing: .08em; }
-.footer nav a:hover { background: #efe6d3; color: #211f1b; text-decoration: none; }
+.footer nav a { display: inline-flex; align-items: center; height: 36px; padding: 0 var(--sp-4); border: var(--bw) solid var(--night-fg); color: var(--night-fg); font-family: var(--font-mono); font-size: var(--fs-xs); font-weight: 700; text-transform: uppercase; letter-spacing: .08em; }
+.footer nav a:hover { background: var(--night-fg); color: var(--night); text-decoration: none; }
 
 /* ---------- Главная ---------- */
 .home-hero { display: grid; grid-template-columns: minmax(0, 1fr) 400px; gap: var(--sp-12); align-items: start; padding-top: var(--sp-12); }
@@ -48,12 +48,12 @@
 .week__empty { margin: 0; padding: var(--sp-5); font-size: var(--fs-sm); }
 
 /* Полоса «как это работает»: тёмное поле во всю ширину */
-.band { margin-top: var(--sp-16); background: #211f1b; color: #efe6d3; background-image: radial-gradient(rgb(239 230 211 / .12) 1.2px, transparent 1.4px); background-size: 9px 9px; }
-[data-theme='dark'] .band { background: #12110f; border-color: var(--line); }
+.band { margin-top: var(--sp-16); background: var(--night); color: var(--night-fg); background-image: radial-gradient(color-mix(in srgb, var(--night-fg) 12%, transparent) 1.2px, transparent 1.4px); background-size: 9px 9px; }
+[data-theme='dark'] .band { background: var(--night); border-color: var(--line); }
 .points { list-style: none; margin-block: 0; padding-block: var(--sp-10); display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: var(--sp-8); counter-reset: point; }
-.points li { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--sp-4); align-items: start; font-size: var(--fs-sm); color: #c9bfa9; line-height: 1.55; }
-.points li::before { counter-increment: point; content: '0' counter(point); font-size: 3.5rem; font-weight: 900; line-height: .85; letter-spacing: -.05em; color: var(--red); text-shadow: 3px 3px 0 var(--blue); }
-.points b { display: block; margin-bottom: 4px; color: #efe6d3; font-size: var(--fs-lg); font-weight: 900; text-transform: uppercase; letter-spacing: -.01em; }
+.points li { display: grid; grid-template-columns: auto minmax(0, 1fr); gap: var(--sp-4); align-items: start; font-size: var(--fs-sm); color: var(--night-muted); line-height: 1.55; }
+.points li::before { counter-increment: point; content: '0' counter(point); font-size: 3.5rem; font-weight: 900; line-height: .85; letter-spacing: -.05em; color: var(--night-accent); text-shadow: 3px 3px 0 var(--blue); }
+.points b { display: block; margin-bottom: 4px; color: var(--night-fg); font-size: var(--fs-lg); font-weight: 900; text-transform: uppercase; letter-spacing: -.01em; }
 
 /* Форматы: нумерованный указатель вместо трёх одинаковых карточек */
 .formats { display: flex; flex-direction: column; border-top: 3px solid var(--line); }

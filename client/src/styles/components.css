@@ -24,7 +24,7 @@
 .btn.is-favorite { color: var(--danger); }
 .btn--danger { background: var(--danger); color: var(--on-red); }
 .btn--danger:hover:not(:disabled) { background: var(--ink); color: var(--bg); }
-[data-theme='dark'] .btn--danger { color: #131217; }
+[data-theme='dark'] .btn--danger { color: var(--on-red); }
 .btn--sm { height: var(--control-sm); padding: 0 var(--sp-3); font-size: var(--fs-sm); }
 .btn--lg { height: var(--control-lg); padding: 0 var(--sp-6); font-size: var(--fs-md); }
 .btn--block { width: 100%; }
@@ -60,7 +60,7 @@
   border: var(--bw) solid var(--line); border-radius: var(--radius); font-size: var(--fs-xs); font-weight: 600; line-height: 1; white-space: nowrap;
 }
 .type { font-family: var(--font-mono); text-transform: uppercase; letter-spacing: .08em; font-size: .6875rem; font-weight: 700; border-color: transparent; background: var(--conference-bg); color: var(--conference-fg); }
-.type--webinar { background: var(--webinar-bg); color: var(--webinar-fg); }
+.type--webinar { background: var(--webinar-bg); color: var(--webinar-fg); border-color: var(--line); }
 .type--meeting { background: var(--meeting-bg); color: var(--meeting-fg); border-color: var(--line); }
 .cat-mark { color: var(--text); background: transparent; border-color: transparent; padding-left: 2px; }
 .cat-mark::before { content: ''; width: 9px; height: 9px; border-radius: 50%; background: var(--cat); box-shadow: 0 0 0 1.5px var(--line); flex-shrink: 0; }

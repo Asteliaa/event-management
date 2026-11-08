@@ -1,5 +1,6 @@
 /* Дизайн-токены EventHub. Направление: retro-print (плакатная афиша), см. .claude/skills.
-   Тёплая бумага, печатные чернила, ровно две краски: красная и синяя.
+   Цвета бумаги, чернил и двух красок задаются в palette.css (--red — основная краска,
+   --blue — вторая; имена исторические, сами цвета определяет палитра).
    Глубина создаётся линиями и плашками, а не тенями. Зелёный и оранжевый — только статусы.
    Компоненты используют только эти переменные. */
 @import '@fontsource/golos-text/400.css';
@@ -11,34 +12,14 @@
 
 :root {
   /* Бумага и чернила */
-  --bg: #f3ecdc;               /* бумага */
-  --surface: #f8f3e8;          /* поля ввода и плашки */
-  --surface-2: #e9e0cb;        /* «оттянутая» бумага: шапки таблиц, полосы */
-  --ink: #211f1b;
-  --line: var(--ink);
-  --border: rgb(33 31 27 / .18);
-  --border-strong: rgb(33 31 27 / .4);
 
-  --text: #211f1b;
-  --text-2: #423e36;
-  --muted: #6b6558;
 
   /* Две краски */
-  --red: #d8452a;
-  --blue: #2f5a8a;
-  --on-red: #fbf6ec;
-  --on-blue: #fbf6ec;
   /* совместимость с компонентами */
   --cobalt: var(--blue);
   --on-cobalt: var(--on-blue);
   --banana: var(--red);
 
-  --primary: var(--ink);
-  --primary-hover: var(--red);
-  --primary-soft: rgb(216 69 42 / .1);
-  --primary-ring: rgb(216 69 42 / .3);
-  --on-primary: #fbf6ec;
-  --link: #b83a22;
 
   --success: #2d6a3e;
   --success-soft: #dfe8d2;
@@ -94,7 +75,6 @@
   --shadow-lg: none;
   --ease-spring: cubic-bezier(.2, .8, .2, 1);
   /* Растр (полутон) для 1–2 плашек на странице */
-  --halftone: radial-gradient(rgb(33 31 27 / .2) 1.2px, transparent 1.4px) 0 0 / 9px 9px;
 
   --header-h: 68px;
   --container: 1200px;
@@ -104,26 +84,6 @@
 
 /* Тёмная тема: та же афиша, отпечатанная светлыми красками на тёмной бумаге */
 [data-theme='dark'] {
-  --bg: #1c1a17;
-  --surface: #24221e;
-  --surface-2: #2d2a25;
-  --ink: #efe6d3;
-  --line: #efe6d3;
-  --border: rgb(239 230 211 / .16);
-  --border-strong: rgb(239 230 211 / .38);
-  --text: #efe6d3;
-  --text-2: #d6ccb8;
-  --muted: #a69d8b;
-  --red: #f0704f;
-  --blue: #7ea6d6;
-  --on-red: #1c1a17;
-  --on-blue: #1c1a17;
-  --primary: #efe6d3;
-  --primary-hover: #f0704f;
-  --primary-soft: rgb(240 112 79 / .14);
-  --primary-ring: rgb(240 112 79 / .35);
-  --on-primary: #1c1a17;
-  --link: #f0886b;
   --success: #8fca9b;
   --success-soft: rgb(143 202 155 / .14);
   --warning: #e6b45e;
@@ -131,6 +91,5 @@
   --warning-fill: #e6a43a;
   --danger: #f08a70;
   --danger-soft: rgb(240 138 112 / .14);
-  --halftone: radial-gradient(rgb(239 230 211 / .14) 1.2px, transparent 1.4px) 0 0 / 9px 9px;
   color-scheme: dark;
 }

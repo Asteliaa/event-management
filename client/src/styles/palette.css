@@ -1,0 +1,28 @@
+/* Палитра EventHub «Пустынная роза»: основа — тема desert-rose из скилла theme-factory,
+   шкалы оттенков и проверка контраста WCAG — скилл color-palette (scripts/palette.py).
+   Бумага с розовым оттенком, бордовые чернила, бордовая основная краска (--red)
+   и пыльная роза как вторая (--blue). Все пары текст/фон не ниже 4.5:1. */
+:root, :root[data-theme='light'] {
+  --bg: #f6eee9; --surface: #fbf6f3; --surface-2: #ecdfd8;
+  --ink: #2d1421; --line: #2d1421;
+  --border: rgb(45 20 33 / .16); --border-strong: rgb(45 20 33 / .38);
+  --text: #2d1421; --text-2: #4b2f3c; --muted: #715a65;
+  --red: #7d3f5c; --on-red: #fbf3f6; --blue: #dcaaa8; --on-blue: #2d1421;
+  --primary: #2d1421; --primary-hover: #7d3f5c; --on-primary: #f6eee9;
+  --primary-soft: rgb(125 63 92 / .12); --primary-ring: rgb(125 63 92 / .32);
+  --link: #7d3f5c;
+  --night: #2d1421; --night-fg: #f6e8ec; --night-muted: #c9adb8; --night-accent: #e3a6c0;
+  --halftone: radial-gradient(rgb(45 20 33 / .18) 1.2px, transparent 1.4px) 0 0 / 9px 9px;
+}
+:root[data-theme='dark'] {
+  --bg: #1d1117; --surface: #271820; --surface-2: #32202a;
+  --ink: #f3e5ea; --line: #f3e5ea;
+  --border: rgb(243 229 234 / .16); --border-strong: rgb(243 229 234 / .38);
+  --text: #f3e5ea; --text-2: #dac6ce; --muted: #ad97a1;
+  --red: #e3a6c0; --on-red: #1d1117; --blue: #dcaaa8; --on-blue: #1d1117;
+  --primary: #f3e5ea; --primary-hover: #e3a6c0; --on-primary: #1d1117;
+  --primary-soft: rgb(227 166 192 / .12); --primary-ring: rgb(227 166 192 / .32);
+  --link: #eab4ca;
+  --night: #140b10; --night-fg: #f3e5ea; --night-muted: #ad97a1; --night-accent: #e3a6c0;
+  --halftone: radial-gradient(rgb(243 229 234 / .14) 1.2px, transparent 1.4px) 0 0 / 9px 9px;
+}

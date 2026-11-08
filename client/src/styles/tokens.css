@@ -1,7 +1,6 @@
-/* Дизайн-токены EventHub. Направление: playful-color (скилл .claude/skills/playful-color).
-   Кремовая «бумага», чернильные контуры 2px, жёсткие тени без размытия и ровно два
-   насыщенных цвета: кобальт (действия) и банановый (акценты, выделения).
-   Зелёный, оранжевый и красный остаются только для статусов.
+/* Дизайн-токены EventHub. Направление: retro-print (плакатная афиша), см. .claude/skills.
+   Тёплая бумага, печатные чернила, ровно две краски: красная и синяя.
+   Глубина создаётся линиями и плашками, а не тенями. Зелёный и оранжевый — только статусы.
    Компоненты используют только эти переменные. */
 @import '@fontsource/golos-text/400.css';
 @import '@fontsource/golos-text/500.css';
@@ -12,49 +11,52 @@
 
 :root {
   /* Бумага и чернила */
-  --bg: #fff6e9;               /* фон страницы: кремовая бумага */
-  --surface: #fffdf8;          /* карточки и поля */
-  --surface-2: #f8eedc;        /* заливка неактивных зон: шапка таблицы, сегменты */
-  --ink: #16151b;              /* текст, контуры, жёсткие тени */
-  --line: var(--ink);          /* контур элементов, 2px */
-  --border: rgb(22 21 27 / .16);        /* тонкие разделители внутри карточек */
-  --border-strong: rgb(22 21 27 / .32);
+  --bg: #f3ecdc;               /* бумага */
+  --surface: #f8f3e8;          /* поля ввода и плашки */
+  --surface-2: #e9e0cb;        /* «оттянутая» бумага: шапки таблиц, полосы */
+  --ink: #211f1b;
+  --line: var(--ink);
+  --border: rgb(33 31 27 / .18);
+  --border-strong: rgb(33 31 27 / .4);
 
-  /* Текст */
-  --text: #16151b;
-  --text-2: #3a3843;
-  --muted: #6a6575;
+  --text: #211f1b;
+  --text-2: #423e36;
+  --muted: #6b6558;
 
-  /* Два насыщенных цвета */
-  --cobalt: #2e4bff;
-  --banana: #ffd43b;
-  --on-cobalt: #ffffff;
-  --on-banana: #16151b;
+  /* Две краски */
+  --red: #d8452a;
+  --blue: #2f5a8a;
+  --on-red: #fbf6ec;
+  --on-blue: #fbf6ec;
+  /* совместимость с компонентами */
+  --cobalt: var(--blue);
+  --on-cobalt: var(--on-blue);
+  --banana: var(--red);
 
-  /* Основное действие */
-  --primary: var(--cobalt);
-  --primary-hover: #1f38e0;
-  --primary-soft: #e6eaff;
-  --primary-ring: rgb(46 75 255 / .28);
-  --on-primary: #ffffff;
-  --link: #2238d6;
+  --primary: var(--ink);
+  --primary-hover: var(--red);
+  --primary-soft: rgb(216 69 42 / .1);
+  --primary-ring: rgb(216 69 42 / .3);
+  --on-primary: #fbf6ec;
+  --link: #b83a22;
 
-  /* Статусы */
-  --success: #0f7a44;
-  --success-soft: #dcf5e6;
-  --warning: #8f5300;
-  --warning-soft: #ffefc2;
-  --warning-fill: #f29a00;
-  --danger: #c4290f;
-  --danger-soft: #ffe2da;
+  --success: #2d6a3e;
+  --success-soft: #dfe8d2;
+  --warning: #8a4b00;
+  --warning-soft: #f1dfb8;
+  --warning-fill: #c27a12;
+  --danger: #b3301a;
+  --danger-soft: #f3d6cb;
 
-  /* Форматы мероприятий: те же два цвета + бумага */
-  --conference-bg: var(--cobalt);   --conference-fg: #ffffff;
-  --webinar-bg: var(--banana);      --webinar-fg: var(--ink);
-  --meeting-bg: var(--surface);     --meeting-fg: var(--ink);
+  --conference-bg: var(--red);   --conference-fg: var(--on-red);
+  --webinar-bg: var(--blue);     --webinar-fg: var(--on-blue);
+  --meeting-bg: transparent;     --meeting-fg: var(--ink);
 
-  /* Типографика: Golos Text во всех весах (есть кириллица), моно — для меток */
+  /* Шрифты: плакатный (Golos 900, заглавные), книжный (системная антиква с кириллицей),
+     интерфейсный (Golos) и моно для меток */
   --font: 'Golos Text', system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+  --font-display: 'Golos Text', 'Arial Narrow', sans-serif;
+  --font-serif: Georgia, 'PT Serif', 'Times New Roman', 'Liberation Serif', 'DejaVu Serif', serif;
   --font-mono: ui-monospace, 'SFMono-Regular', 'Cascadia Mono', Consolas, 'Liberation Mono', Menlo, monospace;
   --fs-xs: .75rem;
   --fs-sm: .875rem;
@@ -62,10 +64,9 @@
   --fs-lg: 1.125rem;
   --fs-xl: 1.375rem;
   --fs-2xl: 1.875rem;
-  --fs-3xl: clamp(2rem, 1.3rem + 2.6vw, 3rem);
-  --fs-display: clamp(2.6rem, 1.2rem + 5.4vw, 5rem);
+  --fs-3xl: clamp(2.25rem, 1.3rem + 3.4vw, 3.75rem);
+  --fs-display: clamp(2.5rem, .8rem + 4.6vw, 5.25rem);
 
-  /* Отступы: шаг 4px */
   --sp-1: 4px;
   --sp-2: 8px;
   --sp-3: 12px;
@@ -77,21 +78,23 @@
   --sp-12: 48px;
   --sp-16: 64px;
 
-  /* Размеры элементов управления */
   --control-sm: 34px;
   --control: 44px;
-  --control-lg: 56px;
+  --control-lg: 54px;
 
-  --bw: 2px;                   /* толщина контура */
-  --radius-sm: 6px;
-  --radius: 10px;
-  --radius-lg: 16px;
-  --shadow-hard: 4px 4px 0 var(--ink);
-  --shadow-hard-lg: 6px 6px 0 var(--ink);
+  --bw: 2px;
+  --radius-sm: 0;
+  --radius: 2px;
+  --radius-lg: 2px;
+  /* Тени не используются: печать плоская */
+  --shadow-hard: none;
+  --shadow-hard-lg: none;
   --shadow-sm: none;
-  --shadow-md: var(--shadow-hard);
-  --shadow-lg: var(--shadow-hard-lg);
-  --ease-spring: cubic-bezier(.34, 1.56, .64, 1);
+  --shadow-md: none;
+  --shadow-lg: none;
+  --ease-spring: cubic-bezier(.2, .8, .2, 1);
+  /* Растр (полутон) для 1–2 плашек на странице */
+  --halftone: radial-gradient(rgb(33 31 27 / .2) 1.2px, transparent 1.4px) 0 0 / 9px 9px;
 
   --header-h: 68px;
   --container: 1200px;
@@ -99,37 +102,35 @@
   color-scheme: light;
 }
 
-/* Тёмная тема: та же система, бумага и чернила меняются местами, основное действие — банановое */
+/* Тёмная тема: та же афиша, отпечатанная светлыми красками на тёмной бумаге */
 [data-theme='dark'] {
-  --bg: #131217;
-  --surface: #1d1c23;
-  --surface-2: #27262f;
-  --ink: #f6eedf;
-  --line: #f6eedf;
-  --border: rgb(246 238 223 / .16);
-  --border-strong: rgb(246 238 223 / .34);
-  --text: #f6eedf;
-  --text-2: #d9d1c3;
-  --muted: #a9a2b3;
-  --cobalt: #8496ff;
-  --on-cobalt: #131217;
-  --primary: var(--banana);
-  --primary-hover: #ffe27a;
-  --primary-soft: rgb(255 212 59 / .14);
-  --primary-ring: rgb(255 212 59 / .35);
-  --on-primary: #131217;
-  --link: #ffd43b;
-  --success: #5fd69a;
-  --success-soft: rgb(95 214 154 / .14);
-  --warning: #ffc24d;
-  --warning-soft: rgb(255 194 77 / .14);
-  --warning-fill: #ffb020;
-  --danger: #ff8a73;
-  --danger-soft: rgb(255 138 115 / .14);
-  --conference-bg: #8496ff;  --conference-fg: #131217;
-  --webinar-bg: var(--banana); --webinar-fg: #131217;
-  --meeting-bg: transparent;  --meeting-fg: #f6eedf;
-  --shadow-hard: 4px 4px 0 #000;
-  --shadow-hard-lg: 6px 6px 0 #000;
+  --bg: #1c1a17;
+  --surface: #24221e;
+  --surface-2: #2d2a25;
+  --ink: #efe6d3;
+  --line: #efe6d3;
+  --border: rgb(239 230 211 / .16);
+  --border-strong: rgb(239 230 211 / .38);
+  --text: #efe6d3;
+  --text-2: #d6ccb8;
+  --muted: #a69d8b;
+  --red: #f0704f;
+  --blue: #7ea6d6;
+  --on-red: #1c1a17;
+  --on-blue: #1c1a17;
+  --primary: #efe6d3;
+  --primary-hover: #f0704f;
+  --primary-soft: rgb(240 112 79 / .14);
+  --primary-ring: rgb(240 112 79 / .35);
+  --on-primary: #1c1a17;
+  --link: #f0886b;
+  --success: #8fca9b;
+  --success-soft: rgb(143 202 155 / .14);
+  --warning: #e6b45e;
+  --warning-soft: rgb(230 180 94 / .14);
+  --warning-fill: #e6a43a;
+  --danger: #f08a70;
+  --danger-soft: rgb(240 138 112 / .14);
+  --halftone: radial-gradient(rgb(239 230 211 / .14) 1.2px, transparent 1.4px) 0 0 / 9px 9px;
   color-scheme: dark;
 }

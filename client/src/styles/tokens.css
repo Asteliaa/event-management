@@ -1,53 +1,69 @@
-/* Дизайн-токены EventHub.
-   Все цвета, отступы, размеры шрифта, радиусы и высоты элементов управления задаются здесь,
-   компоненты используют только эти переменные. Нейтральная палитра Slate + синий основной цвет,
-   статусы: зеленый (успех), янтарный (предупреждение, напоминания), красный (ошибка). */
+/* Дизайн-токены EventHub. Направление: playful-color (скилл .claude/skills/playful-color).
+   Кремовая «бумага», чернильные контуры 2px, жёсткие тени без размытия и ровно два
+   насыщенных цвета: кобальт (действия) и банановый (акценты, выделения).
+   Зелёный, оранжевый и красный остаются только для статусов.
+   Компоненты используют только эти переменные. */
 @import '@fontsource/golos-text/400.css';
 @import '@fontsource/golos-text/500.css';
 @import '@fontsource/golos-text/600.css';
 @import '@fontsource/golos-text/700.css';
+@import '@fontsource/golos-text/800.css';
+@import '@fontsource/golos-text/900.css';
 
 :root {
-  /* Цвета: поверхности */
-  --bg: #f5f7fa;
-  --surface: #ffffff;
-  --surface-2: #f1f4f8;        /* заливка неактивных зон: шапка таблицы, сегменты */
-  --border: #e3e8ef;
-  --border-strong: #cdd5df;
+  /* Бумага и чернила */
+  --bg: #fff6e9;               /* фон страницы: кремовая бумага */
+  --surface: #fffdf8;          /* карточки и поля */
+  --surface-2: #f8eedc;        /* заливка неактивных зон: шапка таблицы, сегменты */
+  --ink: #16151b;              /* текст, контуры, жёсткие тени */
+  --line: var(--ink);          /* контур элементов, 2px */
+  --border: rgb(22 21 27 / .16);        /* тонкие разделители внутри карточек */
+  --border-strong: rgb(22 21 27 / .32);
 
-  /* Цвета: текст */
-  --text: #111827;
-  --text-2: #374151;
-  --muted: #6b7280;
+  /* Текст */
+  --text: #16151b;
+  --text-2: #3a3843;
+  --muted: #6a6575;
 
-  /* Цвета: основной и статусы */
-  --primary: #2563eb;
-  --primary-hover: #1d4ed8;
-  --primary-soft: #eff4ff;
-  --primary-ring: rgb(37 99 235 / .22);
+  /* Два насыщенных цвета */
+  --cobalt: #2e4bff;
+  --banana: #ffd43b;
+  --on-cobalt: #ffffff;
+  --on-banana: #16151b;
+
+  /* Основное действие */
+  --primary: var(--cobalt);
+  --primary-hover: #1f38e0;
+  --primary-soft: #e6eaff;
+  --primary-ring: rgb(46 75 255 / .28);
   --on-primary: #ffffff;
-  --success: #15803d;
-  --success-soft: #ecfdf3;
-  --warning: #b45309;
-  --warning-soft: #fff7e6;
-  --warning-fill: #f59e0b;
-  --danger: #dc2626;
-  --danger-soft: #fef2f2;
+  --link: #2238d6;
 
-  /* Форматы мероприятий */
-  --conference: #4f46e5;
-  --webinar: #0e7490;
-  --meeting: #15803d;
+  /* Статусы */
+  --success: #0f7a44;
+  --success-soft: #dcf5e6;
+  --warning: #8f5300;
+  --warning-soft: #ffefc2;
+  --warning-fill: #f29a00;
+  --danger: #c4290f;
+  --danger-soft: #ffe2da;
 
-  /* Типографика: один шрифт, шкала 12/14/16/18/22/28/36 */
+  /* Форматы мероприятий: те же два цвета + бумага */
+  --conference-bg: var(--cobalt);   --conference-fg: #ffffff;
+  --webinar-bg: var(--banana);      --webinar-fg: var(--ink);
+  --meeting-bg: var(--surface);     --meeting-fg: var(--ink);
+
+  /* Типографика: Golos Text во всех весах (есть кириллица), моно — для меток */
   --font: 'Golos Text', system-ui, -apple-system, 'Segoe UI', Roboto, Arial, sans-serif;
+  --font-mono: ui-monospace, 'SFMono-Regular', 'Cascadia Mono', Consolas, 'Liberation Mono', Menlo, monospace;
   --fs-xs: .75rem;
   --fs-sm: .875rem;
   --fs-md: 1rem;
   --fs-lg: 1.125rem;
   --fs-xl: 1.375rem;
-  --fs-2xl: 1.75rem;
-  --fs-3xl: clamp(1.75rem, 1.2rem + 2vw, 2.375rem);
+  --fs-2xl: 1.875rem;
+  --fs-3xl: clamp(2rem, 1.3rem + 2.6vw, 3rem);
+  --fs-display: clamp(2.6rem, 1.2rem + 5.4vw, 5rem);
 
   /* Отступы: шаг 4px */
   --sp-1: 4px;
@@ -59,51 +75,61 @@
   --sp-8: 32px;
   --sp-10: 40px;
   --sp-12: 48px;
+  --sp-16: 64px;
 
-  /* Размеры элементов управления: кнопки, поля и списки одной высоты */
-  --control-sm: 32px;
-  --control: 40px;
-  --control-lg: 48px;
+  /* Размеры элементов управления */
+  --control-sm: 34px;
+  --control: 44px;
+  --control-lg: 56px;
 
+  --bw: 2px;                   /* толщина контура */
   --radius-sm: 6px;
-  --radius: 8px;
-  --radius-lg: 12px;
-  --shadow-sm: 0 1px 2px rgb(16 24 40 / .05);
-  --shadow-md: 0 4px 12px -2px rgb(16 24 40 / .08), 0 2px 4px -2px rgb(16 24 40 / .04);
-  --shadow-lg: 0 16px 32px -8px rgb(16 24 40 / .18), 0 4px 8px -4px rgb(16 24 40 / .06);
+  --radius: 10px;
+  --radius-lg: 16px;
+  --shadow-hard: 4px 4px 0 var(--ink);
+  --shadow-hard-lg: 6px 6px 0 var(--ink);
+  --shadow-sm: none;
+  --shadow-md: var(--shadow-hard);
+  --shadow-lg: var(--shadow-hard-lg);
+  --ease-spring: cubic-bezier(.34, 1.56, .64, 1);
 
-  --header-h: 64px;
+  --header-h: 68px;
   --container: 1200px;
 
   color-scheme: light;
 }
 
+/* Тёмная тема: та же система, бумага и чернила меняются местами, основное действие — банановое */
 [data-theme='dark'] {
-  --bg: #0f172a;
-  --surface: #1e293b;
-  --surface-2: #172033;
-  --border: #334155;
-  --border-strong: #475569;
-  --text: #f1f5f9;
-  --text-2: #cbd5e1;
-  --muted: #94a3b8;
-  --primary: #60a5fa;
-  --primary-hover: #93c5fd;
-  --primary-soft: rgb(96 165 250 / .14);
-  --primary-ring: rgb(96 165 250 / .3);
-  --on-primary: #0b1220;
-  --success: #4ade80;
-  --success-soft: rgb(74 222 128 / .12);
-  --warning: #fbbf24;
-  --warning-soft: rgb(251 191 36 / .12);
-  --warning-fill: #f59e0b;
-  --danger: #f87171;
-  --danger-soft: rgb(248 113 113 / .12);
-  --conference: #a5b4fc;
-  --webinar: #67e8f9;
-  --meeting: #86efac;
-  --shadow-sm: none;
-  --shadow-md: 0 4px 12px rgb(0 0 0 / .35);
-  --shadow-lg: 0 16px 32px rgb(0 0 0 / .5);
+  --bg: #131217;
+  --surface: #1d1c23;
+  --surface-2: #27262f;
+  --ink: #f6eedf;
+  --line: #f6eedf;
+  --border: rgb(246 238 223 / .16);
+  --border-strong: rgb(246 238 223 / .34);
+  --text: #f6eedf;
+  --text-2: #d9d1c3;
+  --muted: #a9a2b3;
+  --cobalt: #8496ff;
+  --on-cobalt: #131217;
+  --primary: var(--banana);
+  --primary-hover: #ffe27a;
+  --primary-soft: rgb(255 212 59 / .14);
+  --primary-ring: rgb(255 212 59 / .35);
+  --on-primary: #131217;
+  --link: #ffd43b;
+  --success: #5fd69a;
+  --success-soft: rgb(95 214 154 / .14);
+  --warning: #ffc24d;
+  --warning-soft: rgb(255 194 77 / .14);
+  --warning-fill: #ffb020;
+  --danger: #ff8a73;
+  --danger-soft: rgb(255 138 115 / .14);
+  --conference-bg: #8496ff;  --conference-fg: #131217;
+  --webinar-bg: var(--banana); --webinar-fg: #131217;
+  --meeting-bg: transparent;  --meeting-fg: #f6eedf;
+  --shadow-hard: 4px 4px 0 #000;
+  --shadow-hard-lg: 6px 6px 0 #000;
   color-scheme: dark;
 }

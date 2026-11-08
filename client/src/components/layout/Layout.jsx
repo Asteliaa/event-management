@@ -11,15 +11,19 @@ const DOCS_URL = `${new URL(API_URL, window.location.origin).origin}/api/docs`;
 export default function Layout() {
   return (
     <div className="app">
+      <a className="skip-link" href="#main">Перейти к содержимому</a>
       <Header />
-      <main className="main">
+      <main className="main" id="main">
         <Suspense fallback={<div className="container"><Spinner /></div>}>
           <Outlet />
         </Suspense>
       </main>
       <footer className="footer">
         <div className="container footer__inner">
-          <span>© {new Date().getFullYear()} EventHub — конференции, вебинары и встречи</span>
+          <div className="footer__brand">
+            <b>Event<span>Hub</span></b>
+            <small>© {new Date().getFullYear()} EventHub — конференции, вебинары и встречи</small>
+          </div>
           <nav>
             <Link to="/events">Мероприятия</Link>
             <Link to="/about">О проекте</Link>

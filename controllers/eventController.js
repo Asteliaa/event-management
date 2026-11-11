@@ -101,7 +101,7 @@ const createEvent = async (req, res) => {
 const updateEvent = async (req, res) => {
     try {
         const updatedEvent = await Event.findByIdAndUpdate(req.params.id, pickFields(req.body), {
-            returnDocument: 'after', // вернуть документ после изменения (раньше – new: true)
+            new: true, // вернуть документ после изменения
             runValidators: true
         });
 

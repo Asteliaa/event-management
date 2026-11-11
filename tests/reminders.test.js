@@ -1,7 +1,7 @@
 const { useTestDB, createUser, createEvent, inDays, missingId } = require('./helpers');
 const request = require('supertest');
 const app = require('../src/app');
-const { Reminder } = require('../src/models');
+const { Reminder, Event } = require('../src/models');
 const scheduler = require('../src/jobs/reminderScheduler');
 const notify = require('../src/socket/notify');
 
@@ -108,6 +108,24 @@ describe('Планировщик напоминаний', () => {
         await scheduler.runOnce(new Date(Date.now() + 6 * 60e3));
         const res = await request(app).patch(`${api}/${r.id}`).set('Authorization', user.auth).send({ offsetMinutes: 10 });
         expect(res.status).toBe(400);
+    });
+
+    it('не отправляет напоминания об отмененном мероприятии', async () => {
+        const user = await createUser();
+        const event = await createEvent({ startsAt: new Date(Date.now() + 20 * 60e3) });
+        const other = await createEvent({ startsAt: new Date(Date.now() + 20 * 60e3) });
+        await create(user, { event: event.id, offsetMinutes: 15 });
+        await create(user, { event: other.id, offsetMinutes: 15 });
+        await Event.update({ status: 'cancelled' }, { where: { id: event.id } });
+
+        const emitted = [];
+        notify.setIO({ to: (rooms) => ({ emit: (name, payload) => emitted.push(payload) }) });
+        const later = new Date(Date.now() + 6 * 60e3);
+        expect(await scheduler.runOnce(later)).toBe(1);
+        expect(emitted.map((p) => p.event.id)).toEqual([other.id]);
+        // напоминание отмененного мероприятия не помечено отправленным и не попадает в центр уведомлений
+        expect((await Reminder.findOne({ where: { eventId: event.id } })).status).toBe('pending');
+        expect((await request(app).get(`${api}?unread=true`).set('Authorization', user.auth)).body).toHaveLength(1);
     });
 
     it('start() запускает периодическую проверку и возвращает функцию остановки', async () => {

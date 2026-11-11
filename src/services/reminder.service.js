@@ -116,16 +116,19 @@ const removeForUserEvent = (userId, eventId, transaction) =>
 
 // Выбирает наступившие напоминания и переводит их в sent одним запросом.
 // FOR UPDATE SKIP LOCKED: если запущено несколько экземпляров сервера, одно напоминание
-// заберет только один из них, поэтому оно не будет отправлено дважды
+// заберет только один из них, поэтому оно не будет отправлено дважды.
+// Напоминания отмененных мероприятий не отправляются и остаются в статусе pending
+// (полноценные уведомления об отмене – отдельная задача следующего этапа)
 const takeDue = async (now = new Date(), batch = 100) => {
     const rows = await sequelize.query(
         `UPDATE reminders r SET status = 'sent', sent_at = :now, updated_at = now()
          WHERE r.id IN (
-             SELECT id FROM reminders
-             WHERE status = 'pending' AND remind_at <= :now
-             ORDER BY remind_at, id
+             SELECT rm.id FROM reminders rm
+             JOIN events e ON e.id = rm.event_id
+             WHERE rm.status = 'pending' AND rm.remind_at <= :now AND e.status = 'published'
+             ORDER BY rm.remind_at, rm.id
              LIMIT :batch
-             FOR UPDATE SKIP LOCKED
+             FOR UPDATE OF rm SKIP LOCKED
          )
          RETURNING r.id`,
         { replacements: { now, batch }, type: QueryTypes.SELECT }

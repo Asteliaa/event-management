@@ -1,3 +1,2 @@
-module.exports = async () => {
-    await globalThis.__MONGOD__.stop();
-};
+// Тестовая база остается после прогона (для разбора ошибок) и очищается при следующем запуске
+module.exports = async () => {};

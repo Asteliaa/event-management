@@ -8,7 +8,7 @@ const notify = require('../socket/notify');
 const runOnce = async (now = new Date()) => {
     const due = await reminderService.takeDue(now);
     for (const reminder of due) {
-        notify.toRooms([notify.rooms.user(reminder.user.toString())], 'reminder:due', reminder.toJSON());
+        notify.toRooms([notify.rooms.user(String(reminder.userId))], 'reminder:due', reminder.toJSON());
     }
     return due.length;
 };

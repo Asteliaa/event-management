@@ -1,4 +1,4 @@
-const { useMemoryDB, createUser, createAdmin, createEvent } = require('./helpers');
+const { useTestDB, createUser, createAdmin, createEvent, missingId } = require('./helpers');
 const http = require('http');
 const jwt = require('jsonwebtoken');
 const request = require('supertest');
@@ -8,7 +8,7 @@ const createSocketServer = require('../src/socket');
 const scheduler = require('../src/jobs/reminderScheduler');
 const { Message } = require('../src/models');
 
-useMemoryDB();
+useTestDB();
 
 let io;
 let url;
@@ -75,10 +75,10 @@ describe('Чат мероприятия', () => {
     it('ошибки при некорректном и отсутствующем мероприятии', async () => {
         const a = await connectAs(await createUser());
         expect(await a.emitWithAck('event:join', { eventId: 'x' })).toMatchObject({ ok: false });
-        expect(await a.emitWithAck('event:join', { eventId: '0'.repeat(24) })).toMatchObject({ ok: false, error: 'Мероприятие не найдено' });
+        expect(await a.emitWithAck('event:join', { eventId: missingId })).toMatchObject({ ok: false, error: 'Мероприятие не найдено' });
     });
 
-    it('сообщение сохраняется в MongoDB с именем автора и приходит другим участникам', async () => {
+    it('сообщение сохраняется в БД с именем автора и приходит другим участникам', async () => {
         const event = await createEvent({ title: 'Вебинар' });
         const anna = await createUser({ name: 'Анна' });
         const a = await connectAs(anna);
@@ -90,7 +90,7 @@ describe('Чат мероприятия', () => {
         const ack = await a.emitWithAck('chat:message', { eventId: event.id, text: '  Привет!  ' });
         expect(ack).toMatchObject({ ok: true, message: { text: 'Привет!', author: 'Анна' } });
         expect(await received).toMatchObject({ text: 'Привет!', author: 'Анна' });
-        expect(await Message.countDocuments({ event: event._id })).toBe(1);
+        expect(await Message.count({ where: { eventId: event.id } })).toBe(1);
 
         const history = await join(await connectAs(await createUser()), event);
         expect(history.history.map((m) => m.text)).toEqual(['Привет!']);

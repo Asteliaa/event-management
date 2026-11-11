@@ -1,13 +1,13 @@
-const { useMemoryDB, createUser, createAdmin, createEvent, inDays } = require('./helpers');
+const { useTestDB, createUser, createAdmin, createEvent, inDays, missingId } = require('./helpers');
 const request = require('supertest');
 const app = require('../src/app');
 const { Event, Registration, Reminder } = require('../src/models');
 
-useMemoryDB();
+useTestDB();
 
 const register = (event, user, body = {}) =>
     request(app).post(`/api/v1/events/${event.id}/registrations`).set('Authorization', user.auth).send(body);
-const seats = async (event) => (await Event.findById(event._id)).seatsTaken;
+const seats = async (event) => (await Event.findByPk(event.id)).seatsTaken;
 
 describe('POST /events/:id/registrations', () => {
     it('201: регистрация, занятые места и автоматическое напоминание за сутки', async () => {
@@ -51,14 +51,14 @@ describe('POST /events/:id/registrations', () => {
         const results = await Promise.all(users.map((u) => register(event, u)));
         expect(results.filter((r) => r.status === 201)).toHaveLength(5);
         expect(await seats(event)).toBe(5);
-        expect(await Registration.countDocuments()).toBe(5);
+        expect(await Registration.count()).toBe(5);
     });
 
     it('409 для прошедшего и отмененного мероприятия, 404 для отсутствующего', async () => {
         const user = await createUser();
         expect((await register(await createEvent({ startsAt: inDays(-1) }), user)).body.error.code).toBe('EVENT_PAST');
         expect((await register(await createEvent({ status: 'cancelled' }), user)).body.error.code).toBe('EVENT_CANCELLED');
-        expect((await register({ id: '0'.repeat(24) }, user)).status).toBe(404);
+        expect((await register({ id: missingId }, user)).status).toBe(404);
     });
 
     it('422 при некорректном числе билетов, 401 без токена', async () => {
@@ -114,7 +114,7 @@ describe('PATCH и DELETE /registrations/:id', () => {
         expect(res.status).toBe(200);
         expect(res.body.status).toBe('cancelled');
         expect(await seats(event)).toBe(0);
-        expect(await Reminder.countDocuments({ user: user._id })).toBe(0);
+        expect(await Reminder.count({ where: { userId: user.id } })).toBe(0);
 
         const again = await register(event, user, { tickets: 1 });
         expect(again.status).toBe(201);
@@ -124,7 +124,7 @@ describe('PATCH и DELETE /registrations/:id', () => {
 
     it('404 для отсутствующей регистрации', async () => {
         const user = await createUser();
-        expect((await request(app).delete(`/api/v1/registrations/${'0'.repeat(24)}`).set('Authorization', user.auth)).status).toBe(404);
+        expect((await request(app).delete(`/api/v1/registrations/${missingId}`).set('Authorization', user.auth)).status).toBe(404);
     });
 });
 

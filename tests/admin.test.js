@@ -1,16 +1,16 @@
-const { useMemoryDB, createUser, createAdmin, createEvent, createCategory, inDays } = require('./helpers');
+const { useTestDB, createUser, createAdmin, createEvent, createCategory, inDays, missingId } = require('./helpers');
 const request = require('supertest');
 const app = require('../src/app');
-const { Event, Registration, Reminder, User } = require('../src/models');
+const { Event, Registration, Reminder, Favorite } = require('../src/models');
 
-useMemoryDB();
+useTestDB();
 
 describe('Категории', () => {
     it('GET – публичный список с числом предстоящих мероприятий', async () => {
         const it = await createCategory({ name: 'IT' });
         await createCategory({ name: 'Бизнес' });
-        await createEvent({ category: it._id });
-        await createEvent({ category: it._id, startsAt: inDays(-1) });
+        await createEvent({ category: it.id });
+        await createEvent({ category: it.id, startsAt: inDays(-1) });
         const res = await request(app).get('/api/v1/categories');
         expect(res.body.map((c) => [c.name, c.eventsCount])).toEqual([['Бизнес', 0], ['IT', 1]]);
     });
@@ -29,12 +29,12 @@ describe('Категории', () => {
         const admin = await createAdmin();
         const user = await createUser();
         const cat = await createCategory({ name: 'Старое' });
-        const event = await createEvent({ category: cat._id });
+        const event = await createEvent({ category: cat.id });
         expect((await request(app).post('/api/v1/categories').set('Authorization', user.auth).send({ name: 'X1' })).status).toBe(403);
         const upd = await request(app).patch(`/api/v1/categories/${cat.id}`).set('Authorization', admin.auth).send({ name: 'Дизайн' });
         expect(upd.body).toMatchObject({ name: 'Дизайн', slug: 'dizayn' });
         expect((await request(app).delete(`/api/v1/categories/${cat.id}`).set('Authorization', admin.auth)).status).toBe(204);
-        expect((await Event.findById(event._id)).category).toBeUndefined();
+        expect((await Event.findByPk(event.id)).categoryId).toBeNull();
         expect((await request(app).delete(`/api/v1/categories/${cat.id}`).set('Authorization', admin.auth)).status).toBe(404);
     });
 });
@@ -49,8 +49,8 @@ describe('Избранное', () => {
         const list = await request(app).get('/api/v1/auth/me/favorites').set('Authorization', user.auth);
         expect(list.body.map((e) => e.id)).toEqual([event.id]);
         expect((await request(app).delete(url).set('Authorization', user.auth)).status).toBe(204);
-        expect((await User.findById(user._id)).favorites).toHaveLength(0);
-        expect((await request(app).put(`/api/v1/auth/me/favorites/${'0'.repeat(24)}`).set('Authorization', user.auth)).status).toBe(404);
+        expect(await Favorite.count({ where: { userId: user.id } })).toBe(0);
+        expect((await request(app).put(`/api/v1/auth/me/favorites/${missingId}`).set('Authorization', user.auth)).status).toBe(404);
     });
 });
 
@@ -83,9 +83,9 @@ describe('Администрирование пользователей', () => 
         const event = await createEvent({ capacity: 5 });
         await request(app).post(`/api/v1/events/${event.id}/registrations`).set('Authorization', user.auth).send({ tickets: 3 });
         expect((await request(app).delete(`/api/v1/admin/users/${user.id}`).set('Authorization', admin.auth)).status).toBe(204);
-        expect((await Event.findById(event._id)).seatsTaken).toBe(0);
-        expect(await Registration.countDocuments()).toBe(0);
-        expect(await Reminder.countDocuments()).toBe(0);
+        expect((await Event.findByPk(event.id)).seatsTaken).toBe(0);
+        expect(await Registration.count()).toBe(0);
+        expect(await Reminder.count()).toBe(0);
         expect((await request(app).delete(`/api/v1/admin/users/${admin.id}`).set('Authorization', admin.auth)).status).toBe(400);
     });
 });
@@ -95,7 +95,7 @@ describe('Статистика', () => {
         const admin = await createAdmin();
         const user = await createUser();
         const cat = await createCategory({ name: 'IT', color: '#6366f1' });
-        const event = await createEvent({ type: 'conference', category: cat._id, capacity: 100 });
+        const event = await createEvent({ type: 'conference', category: cat.id, capacity: 100 });
         await createEvent({ type: 'webinar' });
         await request(app).post(`/api/v1/events/${event.id}/registrations`).set('Authorization', user.auth).send({ tickets: 4 });
 

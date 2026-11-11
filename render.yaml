@@ -1,5 +1,6 @@
 # Render Blueprint: backend (Node.js) – https://render.com/docs/blueprint-spec
-# База данных – MongoDB Atlas (бесплатный кластер M0), строка подключения задается в MONGO_URI
+# База данных – управляемая PostgreSQL, строка подключения задается в DATABASE_URL.
+# Провайдер развертывания курсовой еще не выбран окончательно: файл описывает только backend
 services:
   - type: web
     name: eventhub-api
@@ -7,13 +8,16 @@ services:
     plan: free
     region: frankfurt
     buildCommand: npm ci --omit=dev
-    startCommand: node server.js
+    # новые миграции применяются перед запуском сервера
+    startCommand: node scripts/migrate.js up && node server.js
     healthCheckPath: /health
     envVars:
       - key: NODE_ENV
         value: production
-      - key: MONGO_URI
+      - key: DATABASE_URL
         sync: false
+      - key: DB_SSL
+        value: "true"
       - key: JWT_SECRET
         generateValue: true
       - key: CLIENT_URL

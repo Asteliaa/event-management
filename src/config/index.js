@@ -8,7 +8,15 @@ const config = {
     isTest: env === 'test',
     isProd: env === 'production',
     port: Number(process.env.PORT) || 3000,
-    mongoUri: process.env.MONGO_URI,
+    db: {
+        // postgres://user:password@host:5432/database
+        get url() {
+            return process.env.DATABASE_URL;
+        },
+        // DB_SSL=true – для управляемых облачных баз (Render, Supabase и т. п.)
+        ssl: process.env.DB_SSL === 'true',
+        logging: process.env.DB_LOGGING === 'true'
+    },
     clientUrl: (process.env.CLIENT_URL || 'http://localhost:5173').split(',').map((s) => s.trim()),
     jwt: {
         get secret() {

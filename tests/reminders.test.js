@@ -1,11 +1,11 @@
-const { useMemoryDB, createUser, createEvent, inDays } = require('./helpers');
+const { useTestDB, createUser, createEvent, inDays, missingId } = require('./helpers');
 const request = require('supertest');
 const app = require('../src/app');
 const { Reminder } = require('../src/models');
 const scheduler = require('../src/jobs/reminderScheduler');
 const notify = require('../src/socket/notify');
 
-useMemoryDB();
+useTestDB();
 
 const api = '/api/v1/reminders';
 const create = (user, body) => request(app).post(api).set('Authorization', user.auth).send(body);
@@ -27,7 +27,7 @@ describe('CRUD напоминаний', () => {
         expect((await create(user, { event: event.id, offsetMinutes: 10 })).status).toBe(201);
         const dup = await create(user, { event: event.id, offsetMinutes: 10 });
         expect(dup.status).toBe(409);
-        expect((await create(user, { event: '0'.repeat(24), offsetMinutes: 10 })).status).toBe(404);
+        expect((await create(user, { event: missingId, offsetMinutes: 10 })).status).toBe(404);
     });
 
     it('422 при слишком маленьком интервале', async () => {
@@ -55,7 +55,7 @@ describe('CRUD напоминаний', () => {
         const upd = await request(app).patch(`${api}/${r.id}`).set('Authorization', user.auth).send({ offsetMinutes: 180 });
         expect(new Date(upd.body.remindAt).getTime()).toBe(event.startsAt.getTime() - 180 * 60e3);
         expect((await request(app).delete(`${api}/${r.id}`).set('Authorization', user.auth)).status).toBe(204);
-        expect(await Reminder.countDocuments()).toBe(0);
+        expect(await Reminder.count()).toBe(0);
     });
 });
 

@@ -7,6 +7,7 @@ const pageResult = (data, total, { page, limit }) => ({
     meta: { page, limit, total, pages: Math.max(Math.ceil(total / limit), 1) }
 });
 
-const escapeRegex = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+// Шаблон «содержит подстроку» для ILIKE: символы %, _ и \ из ввода пользователя экранируются
+const likePattern = (s) => `%${s.replace(/[\\%_]/g, '\\$&')}%`;
 
-module.exports = { paginate, pageResult, escapeRegex };
+module.exports = { paginate, pageResult, likePattern };

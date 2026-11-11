@@ -1,6 +1,7 @@
 const jwt = require('jsonwebtoken');
 const config = require('../config');
 const { User } = require('../models');
+const { isValidId } = require('../utils/id');
 const ApiError = require('../utils/ApiError');
 
 const readToken = (req) => {
@@ -17,10 +18,10 @@ const loadUser = async (token) => {
     } catch {
         throw ApiError.unauthorized('Недействительный или просроченный токен');
     }
-    const user = await User.findById(payload.id).lean();
+    const user = isValidId(String(payload.id)) ? await User.findByPk(payload.id) : null;
     if (!user) throw ApiError.unauthorized('Пользователь не найден');
     if (user.blocked) throw ApiError.forbidden('Учетная запись заблокирована');
-    return { id: user._id.toString(), email: user.email, name: user.name, role: user.role };
+    return { id: String(user.id), email: user.email, name: user.name, role: user.role };
 };
 
 // Обязательная авторизация: без токена – 401

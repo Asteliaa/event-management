@@ -1,39 +1,34 @@
-const mongoose = require('mongoose');
 const bcrypt = require('bcrypt');
 
 process.env.NODE_ENV = 'test';
 process.env.JWT_SECRET = 'test-secret';
+// globalSetup выполняется в отдельном контексте, поэтому адрес тестовой базы задается и здесь
+process.env.DATABASE_URL = process.env.TEST_DATABASE_URL;
 
-const { User, Event, Category } = require('../src/models');
+const { sequelize, User, Event, Category } = require('../src/models');
 const { signToken } = require('../src/services/auth.service');
 
-// Временная MongoDB в памяти (tests/globalSetup.js), у каждого файла тестов своя база
-const useMemoryDB = () => {
-    beforeAll(async () => {
-        await mongoose.connect(process.env.MONGO_TEST_URI, {
-            dbName: `test_${process.env.JEST_WORKER_ID}_${Date.now()}`,
-            // драйвер mongodb 7 загружает модуль os через import(), который не работает в песочнице Jest
-            runtimeAdapters: { os: require('os') }
-        });
-        await Promise.all(Object.values(mongoose.models).map((m) => m.syncIndexes()));
-    });
+const TABLES = ['favorites', 'messages', 'reminders', 'registrations', 'events', 'categories', 'users'];
+
+// Тестовая база PostgreSQL (tests/globalSetup.js): после каждого теста таблицы очищаются
+const useTestDB = () => {
     afterEach(async () => {
-        await Promise.all(Object.values(mongoose.connection.collections).map((c) => c.deleteMany({})));
+        await sequelize.query(`TRUNCATE ${TABLES.join(', ')} RESTART IDENTITY CASCADE`);
     });
     afterAll(async () => {
-        await mongoose.connection.dropDatabase();
-        await mongoose.disconnect();
+        await sequelize.close();
     });
 };
 
 let counter = 0;
 const createUser = async (data = {}) => {
     counter += 1;
+    const { password, ...rest } = data;
     const user = await User.create({
         name: `Пользователь ${counter}`,
         email: `user${counter}@test.local`,
-        passwordHash: await bcrypt.hash(data.password || 'secret123', 4),
-        ...data
+        passwordHash: await bcrypt.hash(password || 'secret123', 4),
+        ...rest
     });
     return Object.assign(user, { auth: `Bearer ${signToken(user)}` });
 };
@@ -42,13 +37,22 @@ const createAdmin = (data = {}) => createUser({ role: 'admin', ...data });
 
 const inDays = (days) => new Date(Date.now() + days * 864e5);
 
-const createEvent = (data = {}) => Event.create({
+// Поля как в API: category – id категории, location – вложенный объект
+const eventAttributes = ({ category, location, ...data }) => ({
     title: 'Тестовое мероприятие',
     type: 'webinar',
     startsAt: inDays(7),
+    ...(category !== undefined && { categoryId: category }),
+    ...(location !== undefined && Event.locationToColumns(location)),
     ...data
 });
 
+const createEvent = (data = {}) => Event.create(eventAttributes(data));
+const createEvents = (list) => Promise.all(list.map(createEvent));
+
 const createCategory = (data = {}) => Category.create({ name: 'IT', slug: `it-${++counter}`, ...data });
 
-module.exports = { useMemoryDB, createUser, createAdmin, createEvent, createCategory, inDays };
+// Заведомо отсутствующий, но корректный id
+const missingId = '999999999';
+
+module.exports = { useTestDB, createUser, createAdmin, createEvent, createEvents, createCategory, inDays, missingId };

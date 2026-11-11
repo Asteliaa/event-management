@@ -1,8 +1,9 @@
 const { z } = require('zod');
-const mongoose = require('mongoose');
+const { isValidId } = require('../utils/id');
 
-const objectId = z.string().refine((v) => mongoose.isValidObjectId(v), 'Некорректный идентификатор');
-const idParam = z.object({ id: objectId });
+// Идентификатор записи: положительное целое (bigint) в виде строки, например "42"
+const recordId = z.string().refine(isValidId, 'Некорректный идентификатор');
+const idParam = z.object({ id: recordId });
 
 const pageQuery = {
     page: z.coerce.number().int().min(1).default(1),
@@ -20,4 +21,4 @@ const email = z.string().trim().toLowerCase().email('Некорректный em
 
 const booleanString = z.enum(['true', 'false']).transform((v) => v === 'true');
 
-module.exports = { z, objectId, idParam, pageQuery, password, email, booleanString };
+module.exports = { z, recordId, idParam, pageQuery, password, email, booleanString };

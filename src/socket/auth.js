@@ -1,6 +1,7 @@
 const jwt = require('jsonwebtoken');
 const config = require('../config');
 const { User } = require('../models');
+const { isValidId } = require('../utils/id');
 
 // Middleware Socket.IO: проверка JWT при рукопожатии (handshake).
 // Клиент передает токен в io(url, { auth: { token } }); без токена соединение не устанавливается,
@@ -19,9 +20,9 @@ module.exports = async (socket, next) => {
     }
 
     try {
-        const user = await User.findById(payload.id).lean();
+        const user = isValidId(String(payload.id)) ? await User.findByPk(payload.id) : null;
         if (!user || user.blocked) return next(new Error('Доступ запрещен'));
-        socket.data.user = { id: user._id.toString(), email: user.email, name: user.name, role: user.role };
+        socket.data.user = { id: String(user.id), email: user.email, name: user.name, role: user.role };
         next();
     } catch {
         next(new Error('Ошибка сервера'));

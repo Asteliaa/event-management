@@ -1,10 +1,10 @@
-const { useMemoryDB, createUser } = require('./helpers');
+const { useTestDB, createUser } = require('./helpers');
 const request = require('supertest');
 const jwt = require('jsonwebtoken');
 const app = require('../src/app');
 const { User } = require('../src/models');
 
-useMemoryDB();
+useTestDB();
 
 const api = '/api/v1/auth';
 const valid = { name: 'Анна Петрова', email: 'Anna@Example.com', password: 'secret123' };
@@ -16,7 +16,7 @@ describe('POST /auth/register', () => {
         expect(res.body.user).toMatchObject({ name: 'Анна Петрова', email: 'anna@example.com', role: 'user' });
         expect(res.body.user.passwordHash).toBeUndefined();
         expect(jwt.verify(res.body.token, 'test-secret')).toMatchObject({ email: 'anna@example.com' });
-        const stored = await User.findOne({ email: 'anna@example.com' }).select('+passwordHash');
+        const stored = await User.scope('withPassword').findOne({ where: { email: 'anna@example.com' } });
         expect(stored.passwordHash).toMatch(/^\$2[aby]\$10\$/);
     });
 
@@ -83,13 +83,13 @@ describe('Защищенные маршруты /auth/me', () => {
 
     it('401, если пользователь удален после выдачи токена', async () => {
         const user = await createUser();
-        await User.deleteOne({ _id: user._id });
+        await User.destroy({ where: { id: user.id } });
         expect((await request(app).get(`${api}/me`).set('Authorization', user.auth)).status).toBe(401);
     });
 
     it('403, если пользователь заблокирован после выдачи токена', async () => {
         const user = await createUser();
-        await User.updateOne({ _id: user._id }, { blocked: true });
+        await User.update({ blocked: true }, { where: { id: user.id } });
         expect((await request(app).get(`${api}/me`).set('Authorization', user.auth)).status).toBe(403);
     });
 

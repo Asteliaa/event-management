@@ -1,44 +1,34 @@
-const { Event, User, Registration, Reminder } = require('../models');
+const { Op, QueryTypes } = require('sequelize');
+const { sequelize, Event, User, Reminder } = require('../models');
 
-// Сводка для панели администратора (агрегации MongoDB)
+const select = (sql, replacements) => sequelize.query(sql, { replacements, type: QueryTypes.SELECT });
+
+// Сводка для панели администратора (агрегирующие запросы SQL)
 const overview = async () => {
     const now = new Date();
     const [events, upcoming, users, registrations, remindersSent, byType, byCategory, top, timeline] = await Promise.all([
-        Event.countDocuments(),
-        Event.countDocuments({ startsAt: { $gte: now } }),
-        User.countDocuments(),
-        Registration.aggregate([
-            { $match: { status: { $ne: 'cancelled' } } },
-            { $group: { _id: null, count: { $sum: 1 }, tickets: { $sum: '$tickets' } } }
-        ]),
-        Reminder.countDocuments({ status: 'sent' }),
-        Event.aggregate([
-            { $group: { _id: '$type', events: { $sum: 1 }, seats: { $sum: '$seatsTaken' } } },
-            { $project: { _id: 0, type: '$_id', events: 1, seats: 1 } },
-            { $sort: { events: -1 } }
-        ]),
-        Event.aggregate([
-            { $group: { _id: '$category', events: { $sum: 1 }, seats: { $sum: '$seatsTaken' } } },
-            { $lookup: { from: 'categories', localField: '_id', foreignField: '_id', as: 'category' } },
-            { $unwind: { path: '$category', preserveNullAndEmptyArrays: true } },
-            {
-                $project: {
-                    _id: 0, events: 1, seats: 1,
-                    name: { $ifNull: ['$category.name', 'Без категории'] },
-                    color: { $ifNull: ['$category.color', '#94a3b8'] }
-                }
-            },
-            { $sort: { events: -1 } }
-        ]),
-        Event.find({ startsAt: { $gte: now } }).sort({ seatsTaken: -1 }).limit(5)
-            .select('title startsAt seatsTaken capacity type'),
-        // регистрации по дням за последние 14 дней
-        Registration.aggregate([
-            { $match: { createdAt: { $gte: new Date(now.getTime() - 14 * 864e5) } } },
-            { $group: { _id: { $dateToString: { format: '%Y-%m-%d', date: '$createdAt' } }, count: { $sum: 1 } } },
-            { $project: { _id: 0, date: '$_id', count: 1 } },
-            { $sort: { date: 1 } }
-        ])
+        Event.count(),
+        Event.count({ where: { startsAt: { [Op.gte]: now } } }),
+        User.count(),
+        select(`SELECT count(*)::int AS count, coalesce(sum(tickets), 0)::int AS tickets
+                FROM registrations WHERE status <> 'cancelled'`),
+        Reminder.count({ where: { status: 'sent' } }),
+        select(`SELECT type, count(*)::int AS events, coalesce(sum(seats_taken), 0)::int AS seats
+                FROM events GROUP BY type ORDER BY events DESC, type`),
+        select(`SELECT coalesce(c.name, 'Без категории') AS name, coalesce(c.color, '#94a3b8') AS color,
+                       count(*)::int AS events, coalesce(sum(e.seats_taken), 0)::int AS seats
+                FROM events e LEFT JOIN categories c ON c.id = e.category_id
+                GROUP BY c.id, c.name, c.color ORDER BY events DESC, name`),
+        Event.findAll({
+            where: { startsAt: { [Op.gte]: now } },
+            attributes: ['id', 'title', 'startsAt', 'seatsTaken', 'capacity', 'type'],
+            order: [['seatsTaken', 'DESC'], ['startsAt', 'ASC'], ['id', 'ASC']],
+            limit: 5
+        }),
+        // регистрации по дням (UTC) за последние 14 дней
+        select(`SELECT to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS date, count(*)::int AS count
+                FROM registrations WHERE created_at >= :since
+                GROUP BY 1 ORDER BY 1`, { since: new Date(now.getTime() - 14 * 864e5) })
     ]);
 
     return {

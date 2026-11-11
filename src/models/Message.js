@@ -1,26 +1,43 @@
-const mongoose = require('mongoose');
-const toJSON = require('./toJSON');
+const { DataTypes, Model } = require('sequelize');
+const { sequelize } = require('../db');
+const { compact } = require('./serialize');
 
 const MAX_LENGTH = 500;
 
 // Сообщение в чате мероприятия (история комнаты event:<id>)
-const messageSchema = new mongoose.Schema({
-    event: { type: mongoose.Schema.Types.ObjectId, ref: 'Event', required: true },
-    user: { type: mongoose.Schema.Types.ObjectId, ref: 'User', required: true },
-    // имя копируется в сообщение, чтобы при загрузке истории не делать populate
-    author: { type: String, required: true },
-    text: { type: String, required: true, trim: true, maxlength: MAX_LENGTH }
-}, { timestamps: { createdAt: true, updatedAt: false }, toJSON });
+class Message extends Model {
+    toJSON() {
+        const v = this.get({ plain: false });
+        return compact({
+            id: String(this.id),
+            event: v.eventId === null ? undefined : String(v.eventId),
+            user: v.userId === null ? undefined : String(v.userId),
+            // имя копируется в сообщение, чтобы история не зависела от профиля и удаления пользователя
+            author: v.author,
+            text: v.text,
+            createdAt: v.createdAt
+        });
+    }
 
-messageSchema.index({ event: 1, createdAt: -1 });
+    // Последние limit сообщений мероприятия, от старых к новым
+    static async history(eventId, limit = 50) {
+        const last = await this.findAll({
+            where: { eventId },
+            order: [['createdAt', 'DESC'], ['id', 'DESC']],
+            limit
+        });
+        return last.reverse();
+    }
+}
 
-// Последние limit сообщений мероприятия, от старых к новым
-messageSchema.statics.history = async function (eventId, limit = 50) {
-    const last = await this.find({ event: eventId }).sort({ createdAt: -1, _id: -1 }).limit(limit);
-    return last.reverse();
-};
+Message.init({
+    id: { type: DataTypes.BIGINT, primaryKey: true, autoIncrement: true },
+    eventId: { type: DataTypes.BIGINT, allowNull: false },
+    userId: { type: DataTypes.BIGINT },
+    author: { type: DataTypes.STRING(80), allowNull: false },
+    text: { type: DataTypes.STRING(MAX_LENGTH), allowNull: false, validate: { len: [1, MAX_LENGTH] } }
+}, { sequelize, modelName: 'Message', tableName: 'messages', updatedAt: false });
 
-const Message = mongoose.model('Message', messageSchema);
 Message.MAX_LENGTH = MAX_LENGTH;
 
 module.exports = Message;

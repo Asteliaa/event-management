@@ -1,20 +1,19 @@
-const { useMemoryDB, createUser, createAdmin, createEvent, createCategory, inDays } = require('./helpers');
+const { useTestDB, createUser, createAdmin, createEvent, createCategory, createEvents, inDays, missingId } = require('./helpers');
 const request = require('supertest');
 const app = require('../src/app');
-const { Event, Registration, Reminder, Message, User } = require('../src/models');
+const { Event, Registration, Reminder, Message, Favorite } = require('../src/models');
 
-useMemoryDB();
+useTestDB();
 
 const api = '/api/v1/events';
-const missingId = '0'.repeat(24);
 
 const seed = async () => {
     const it = await createCategory({ name: 'IT', color: '#6366f1' });
     const biz = await createCategory({ name: 'Бизнес', color: '#f59e0b' });
-    await Event.create([
-        { title: 'React для начинающих', type: 'webinar', startsAt: inDays(10), category: it._id, tags: ['frontend'], location: { online: true }, seatsTaken: 5 },
-        { title: 'Конференция DevDay', type: 'conference', startsAt: inDays(20), category: it._id, tags: ['backend'], location: { city: 'Минск' }, seatsTaken: 50 },
-        { title: 'Встреча стартапов', type: 'meeting', startsAt: inDays(3), category: biz._id, location: { city: 'Гродно' }, description: 'Нетворкинг и питчи' },
+    await createEvents([
+        { title: 'React для начинающих', type: 'webinar', startsAt: inDays(10), category: it.id, tags: ['frontend'], location: { online: true }, seatsTaken: 5 },
+        { title: 'Конференция DevDay', type: 'conference', startsAt: inDays(20), category: it.id, tags: ['backend'], location: { city: 'Минск' }, seatsTaken: 50 },
+        { title: 'Встреча стартапов', type: 'meeting', startsAt: inDays(3), category: biz.id, location: { city: 'Гродно' }, description: 'Нетворкинг и питчи' },
         { title: 'Прошедший вебинар', type: 'webinar', startsAt: inDays(-5) }
     ]);
     return { it, biz };
@@ -28,7 +27,7 @@ describe('GET /events – каталог', () => {
         expect(res.body.data.map((e) => e.title)).toEqual(['Встреча стартапов', 'React для начинающих', 'Конференция DevDay']);
         expect(res.body.meta).toEqual({ page: 1, limit: 12, total: 3, pages: 1 });
         expect(res.body.data[0].category).toMatchObject({ name: 'Бизнес', color: '#f59e0b' });
-        expect(res.body.data[0].id).toMatch(/^[0-9a-f]{24}$/);
+        expect(res.body.data[0].id).toMatch(/^[1-9]\d*$/);
         expect(res.body.data[0]._id).toBeUndefined();
     });
 
@@ -93,8 +92,8 @@ describe('GET /events/:id', () => {
 
     it('для пользователя: регистрация, напоминания и избранное', async () => {
         const event = await createEvent();
-        const user = await createUser({ favorites: [] });
-        await User.updateOne({ _id: user._id }, { $push: { favorites: event._id } });
+        const user = await createUser();
+        await Favorite.create({ userId: user.id, eventId: event.id });
         await request(app).post(`${api}/${event.id}/registrations`).set('Authorization', user.auth).send({});
         const res = await request(app).get(`${api}/${event.id}`).set('Authorization', user.auth);
         expect(res.body.isFavorite).toBe(true);
@@ -109,7 +108,7 @@ describe('GET /events/:id', () => {
 
     it('похожие мероприятия по категории и тегам', async () => {
         const { it: itCat } = await seed();
-        const react = await Event.findOne({ title: /React/ });
+        const react = await Event.findOne({ where: { title: 'React для начинающих' } });
         const res = await request(app).get(`${api}/${react.id}/similar`);
         expect(res.body.map((e) => e.title)).toEqual(['Конференция DevDay']);
         expect(itCat).toBeDefined();
@@ -141,7 +140,7 @@ describe('Создание, изменение и удаление (админи
         expect(res.status).toBe(201);
         expect(res.body).toMatchObject({ title: 'Новый вебинар', tags: ['react', 'js'], seatsTaken: 0, seatsLeft: 30, status: 'published' });
         expect(res.headers.location).toBe(`/api/v1/events/${res.body.id}`);
-        expect((await Event.findById(res.body.id)).organizer.toString()).toBe(admin.id);
+        expect(String((await Event.findByPk(res.body.id)).organizerId)).toBe(admin.id);
     });
 
     it('422: обязательные поля и окончание раньше начала', async () => {
@@ -180,7 +179,7 @@ describe('Создание, изменение и удаление (админи
         await request(app).post(`${api}/${event.id}/registrations`).set('Authorization', user.auth).send({});
         const newStart = inDays(12);
         await request(app).patch(`${api}/${event.id}`).set('Authorization', admin.auth).send({ startsAt: newStart.toISOString() });
-        const reminder = await Reminder.findOne({ event: event._id });
+        const reminder = await Reminder.findOne({ where: { eventId: event.id } });
         expect(reminder.remindAt.getTime()).toBe(newStart.getTime() - 24 * 3600e3);
     });
 
@@ -189,15 +188,15 @@ describe('Создание, изменение и удаление (админи
         const user = await createUser();
         const event = await createEvent();
         await request(app).post(`${api}/${event.id}/registrations`).set('Authorization', user.auth).send({});
-        await User.updateOne({ _id: user._id }, { $push: { favorites: event._id } });
-        await Message.create({ event: event._id, user: user._id, author: user.name, text: 'Привет' });
+        await Favorite.create({ userId: user.id, eventId: event.id });
+        await Message.create({ eventId: event.id, userId: user.id, author: user.name, text: 'Привет' });
 
         const res = await request(app).delete(`${api}/${event.id}`).set('Authorization', admin.auth);
         expect(res.status).toBe(204);
-        expect(await Registration.countDocuments()).toBe(0);
-        expect(await Reminder.countDocuments()).toBe(0);
-        expect(await Message.countDocuments()).toBe(0);
-        expect((await User.findById(user._id)).favorites).toHaveLength(0);
+        expect(await Registration.count()).toBe(0);
+        expect(await Reminder.count()).toBe(0);
+        expect(await Message.count()).toBe(0);
+        expect(await Favorite.count()).toBe(0);
         expect((await request(app).delete(`${api}/${event.id}`).set('Authorization', admin.auth)).status).toBe(404);
     });
 });

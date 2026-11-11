@@ -9,6 +9,23 @@ jobs:
   backend:
     name: Сервер (Jest)
     runs-on: ubuntu-latest
+    # отдельная временная PostgreSQL только для тестов; пароль тестовый, не секрет
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: eventhub
+          POSTGRES_PASSWORD: ci_test_password
+          POSTGRES_DB: eventhub_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U eventhub -d eventhub_test"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+    env:
+      TEST_DATABASE_URL: postgres://eventhub:ci_test_password@localhost:5432/eventhub_test
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -16,11 +33,6 @@ jobs:
           node-version: 22
           cache: npm
       - run: npm ci
-      # mongodb-memory-server скачивает MongoDB при первом запуске; бинарник кешируется
-      - uses: actions/cache@v4
-        with:
-          path: ~/.cache/mongodb-binaries
-          key: mongodb-binaries-${{ runner.os }}
       - run: npm test
 
   frontend:

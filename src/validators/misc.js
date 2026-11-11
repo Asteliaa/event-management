@@ -1,4 +1,4 @@
-const { z, objectId, pageQuery } = require('./common');
+const { z, recordId, pageQuery } = require('./common');
 const { User, Registration } = require('../models');
 
 const category = z.object({
@@ -14,7 +14,7 @@ const registrationUpdate = z.object({
 }).refine((v) => Object.keys(v).length, 'Передайте хотя бы одно поле');
 
 const reminderCreate = z.object({
-    event: objectId,
+    event: recordId,
     // за сколько минут до начала напомнить: от 5 минут до 30 дней
     offsetMinutes: z.number().int().min(5).max(60 * 24 * 30)
 });

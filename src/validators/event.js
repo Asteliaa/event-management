@@ -1,4 +1,4 @@
-const { z, objectId, pageQuery, booleanString } = require('./common');
+const { z, recordId, pageQuery, booleanString } = require('./common');
 const { Event } = require('../models');
 
 const location = z.object({
@@ -13,7 +13,7 @@ const base = {
     description: z.string().max(5000).optional(),
     type: z.enum(Event.EVENT_TYPES),
     status: z.enum(Event.EVENT_STATUSES).optional(),
-    category: objectId.nullable().optional(),
+    category: recordId.nullable().optional(),
     startsAt: z.coerce.date({ message: 'Некорректная дата начала' }),
     endsAt: z.coerce.date().nullable().optional(),
     coverUrl: z.string().trim().url('Некорректная ссылка на обложку').or(z.literal('')).optional(),
@@ -34,7 +34,7 @@ const list = z.object({
     ...pageQuery,
     search: z.string().trim().max(100).optional(),
     type: z.enum(Event.EVENT_TYPES).optional(),
-    category: objectId.optional(),
+    category: recordId.optional(),
     city: z.string().trim().max(80).optional(),
     tag: z.string().trim().toLowerCase().optional(),
     online: booleanString.optional(),

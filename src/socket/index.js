@@ -1,8 +1,8 @@
 const { Server } = require('socket.io');
-const mongoose = require('mongoose');
 const { Event, Message } = require('../models');
 const config = require('../config');
 const socketAuth = require('./auth');
+const { isValidId } = require('../utils/id');
 const notify = require('./notify');
 
 const { rooms } = notify;
@@ -69,13 +69,13 @@ function onConnection(io, socket) {
     if (firstTab) socket.broadcast.emit('user:connected', user);
     broadcastOnline(io);
 
-    // Вход в комнату мероприятия: ответ содержит историю чата из MongoDB и список участников
+    // Вход в комнату мероприятия: ответ содержит историю чата из БД и список участников
     socket.on('event:join', async ({ eventId } = {}, ack) => {
         try {
-            if (!mongoose.isValidObjectId(eventId)) {
+            if (!isValidId(eventId)) {
                 return reply(ack, { ok: false, error: 'Некорректный id мероприятия' });
             }
-            const event = await Event.findById(eventId).select('title');
+            const event = await Event.findByPk(eventId, { attributes: ['id', 'title'] });
             if (!event) {
                 return reply(ack, { ok: false, error: 'Мероприятие не найдено' });
             }
@@ -88,7 +88,7 @@ function onConnection(io, socket) {
             if (!alreadyJoined) socket.to(room).emit('room:joined', { eventId, user, members });
             reply(ack, {
                 ok: true,
-                event: { id: event.id, title: event.title },
+                event: { id: String(event.id), title: event.title },
                 history: history.map((m) => m.toJSON()),
                 members
             });
@@ -102,7 +102,7 @@ function onConnection(io, socket) {
         reply(ack, { ok: true });
     });
 
-    // Сообщение в чат мероприятия: проверка, сохранение в MongoDB, рассылка в комнату
+    // Сообщение в чат мероприятия: проверка, сохранение в БД, рассылка в комнату
     socket.on('chat:message', async ({ eventId, text } = {}, ack) => {
         const room = rooms.event(eventId);
         const clean = typeof text === 'string' ? text.trim() : '';
@@ -122,7 +122,7 @@ function onConnection(io, socket) {
 
         try {
             const message = (await Message.create({
-                event: eventId, user: user.id, author: user.name, text: clean
+                eventId, userId: user.id, author: user.name, text: clean
             })).toJSON();
             // Отправитель получает сообщение в подтверждении, остальные – событием
             socket.to(room).emit('chat:message', message);

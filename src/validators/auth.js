@@ -21,4 +21,7 @@ const changePassword = z.object({
     newPassword: password
 });
 
-module.exports = { register, login, updateProfile, changePassword };
+// подтверждение необратимых и чувствительных действий с аккаунтом
+const confirmPassword = z.object({ password: z.string().min(1, 'Введите пароль') });
+
+module.exports = { register, login, updateProfile, changePassword, confirmPassword };

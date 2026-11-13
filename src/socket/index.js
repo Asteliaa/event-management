@@ -1,5 +1,6 @@
 const { Server } = require('socket.io');
-const { Event, Message } = require('../models');
+const { Message } = require('../models');
+const { chatAccess } = require('../services/chat.service');
 const config = require('../config');
 const socketAuth = require('./auth');
 const { isValidId } = require('../utils/id');
@@ -69,16 +70,18 @@ function onConnection(io, socket) {
     if (firstTab) socket.broadcast.emit('user:connected', user);
     broadcastOnline(io);
 
-    // Вход в комнату мероприятия: ответ содержит историю чата из БД и список участников
+    // Вход в комнату мероприятия: права проверяются по БД (участник, организатор, администратор);
+    // ответ содержит историю чата, список участников и признак «только чтение»
     socket.on('event:join', async ({ eventId } = {}, ack) => {
         try {
             if (!isValidId(eventId)) {
                 return reply(ack, { ok: false, error: 'Некорректный id мероприятия' });
             }
-            const event = await Event.findByPk(eventId, { attributes: ['id', 'title'] });
-            if (!event) {
-                return reply(ack, { ok: false, error: 'Мероприятие не найдено' });
+            const access = await chatAccess(user, eventId);
+            if (!access.allowed) {
+                return reply(ack, { ok: false, error: access.error });
             }
+            const { event } = access;
 
             const room = rooms.event(eventId);
             const alreadyJoined = socket.rooms.has(room);
@@ -89,10 +92,11 @@ function onConnection(io, socket) {
             reply(ack, {
                 ok: true,
                 event: { id: String(event.id), title: event.title },
+                readOnly: !access.canWrite,
                 history: history.map((m) => m.toJSON()),
                 members
             });
-        } catch (error) {
+        } catch {
             reply(ack, { ok: false, error: 'Ошибка сервера' });
         }
     });
@@ -121,13 +125,22 @@ function onConnection(io, socket) {
         }
 
         try {
+            // права проверяются заново: участие могли отменить, мероприятие – отменить, роль – отозвать
+            const access = await chatAccess(user, eventId);
+            if (!access.allowed) {
+                await leaveEventRoom(io, socket, String(eventId));
+                return reply(ack, { ok: false, error: access.error, revoked: true });
+            }
+            if (!access.canWrite) {
+                return reply(ack, { ok: false, error: 'Чат доступен только для чтения', readOnly: true });
+            }
             const message = (await Message.create({
                 eventId, userId: user.id, author: user.name, text: clean
             })).toJSON();
             // Отправитель получает сообщение в подтверждении, остальные – событием
             socket.to(room).emit('chat:message', message);
             reply(ack, { ok: true, message });
-        } catch (error) {
+        } catch {
             reply(ack, { ok: false, error: 'Не удалось сохранить сообщение' });
         }
     });

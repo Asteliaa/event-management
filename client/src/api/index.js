@@ -9,7 +9,11 @@ export const authApi = {
   register: (body) => api.post('/auth/register', body).then(data),
   me: () => api.get('/auth/me').then(data),
   updateProfile: (body) => api.patch('/auth/me', body).then(data),
-  changePassword: (body) => api.put('/auth/me/password', body),
+  // ответ – новый токен: прежние токены и соединения других сеансов перестают действовать
+  changePassword: (body) => api.put('/auth/me/password', body).then(data),
+  // деактивация обратима (вход с паролем возвращает аккаунт); удаление необратимо обезличивает данные
+  deactivate: (password) => api.post('/auth/me/deactivate', { password }),
+  deleteAccount: (password) => api.delete('/auth/me', { data: { password } }),
   myRegistrations: (params) => api.get('/auth/me/registrations', { params }).then(data),
   favorites: () => api.get('/auth/me/favorites').then(data),
   addFavorite: (id) => api.put(`/auth/me/favorites/${id}`),
@@ -68,5 +72,8 @@ export const adminApi = {
   stats: () => api.get('/admin/stats').then(data),
   users: (params) => api.get('/admin/users', { params }).then(data),
   updateUser: (id, body) => api.patch(`/admin/users/${id}`, body).then(data),
+  deactivateUser: (id) => api.post(`/admin/users/${id}/deactivate`).then(data),
+  reactivateUser: (id) => api.post(`/admin/users/${id}/reactivate`).then(data),
+  // удаление = обезличивание; 409 ORGANIZER_HAS_FUTURE_EVENTS, если есть будущие опубликованные мероприятия
   removeUser: (id) => api.delete(`/admin/users/${id}`),
 };

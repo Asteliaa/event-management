@@ -15,7 +15,7 @@ describe('POST /auth/register', () => {
         expect(res.status).toBe(201);
         expect(res.body.user).toMatchObject({ name: 'Анна Петрова', email: 'anna@example.com', role: 'user' });
         expect(res.body.user.passwordHash).toBeUndefined();
-        expect(jwt.verify(res.body.token, 'test-secret')).toMatchObject({ email: 'anna@example.com' });
+        expect(jwt.verify(res.body.token, 'test-secret')).toMatchObject({ id: res.body.user.id, role: 'user', tv: 0 });
         const stored = await User.scope('withPassword').findOne({ where: { email: 'anna@example.com' } });
         expect(stored.passwordHash).toMatch(/^\$2[aby]\$10\$/);
     });
@@ -108,14 +108,16 @@ describe('Защищенные маршруты /auth/me', () => {
         expect(res.body).toMatchObject({ name: 'Новое имя', city: 'Брест', email: user.email });
     });
 
-    it('PUT /me/password: 400 при неверном текущем пароле, 204 и вход с новым', async () => {
+    it('PUT /me/password: 400 при неверном текущем пароле; новый токен, старый недействителен, вход с новым', async () => {
         const user = await createUser();
         const bad = await request(app).put(`${api}/me/password`).set('Authorization', user.auth)
             .send({ currentPassword: 'wrong', newPassword: 'newpass123' });
         expect(bad.status).toBe(400);
         const ok = await request(app).put(`${api}/me/password`).set('Authorization', user.auth)
             .send({ currentPassword: 'secret123', newPassword: 'newpass123' });
-        expect(ok.status).toBe(204);
+        expect(ok.status).toBe(200);
+        expect((await request(app).get(`${api}/me`).set('Authorization', user.auth)).status).toBe(401);
+        expect((await request(app).get(`${api}/me`).set('Authorization', `Bearer ${ok.body.token}`)).status).toBe(200);
         const login = await request(app).post(`${api}/login`).send({ email: user.email, password: 'newpass123' });
         expect(login.status).toBe(200);
     });

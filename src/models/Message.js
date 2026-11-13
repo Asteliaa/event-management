@@ -15,6 +15,7 @@ class Message extends Model {
             // имя копируется в сообщение, чтобы история не зависела от профиля и удаления пользователя
             author: v.author,
             text: v.text,
+            deleted: v.deletedAt ? true : undefined,
             createdAt: v.createdAt
         });
     }
@@ -35,7 +36,9 @@ Message.init({
     eventId: { type: DataTypes.BIGINT, allowNull: false },
     userId: { type: DataTypes.BIGINT },
     author: { type: DataTypes.STRING(80), allowNull: false },
-    text: { type: DataTypes.STRING(MAX_LENGTH), allowNull: false, validate: { len: [1, MAX_LENGTH] } }
+    text: { type: DataTypes.STRING(MAX_LENGTH), allowNull: false, validate: { len: [1, MAX_LENGTH] } },
+    // сообщение удаленного пользователя: автор и текст заменены при обезличивании
+    deletedAt: { type: DataTypes.DATE }
 }, { sequelize, modelName: 'Message', tableName: 'messages', updatedAt: false });
 
 Message.MAX_LENGTH = MAX_LENGTH;

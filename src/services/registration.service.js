@@ -3,6 +3,7 @@ const { sequelize, Event, Registration } = require('../models');
 const ApiError = require('../utils/ApiError');
 const reminderService = require('./reminder.service');
 const notificationService = require('./notification.service');
+const notify = require('../socket/notify');
 const { canManageEvent, isAdmin } = require('./access');
 
 // Одна регистрация – одно место. Счетчик events.seats_taken всегда равен числу активных
@@ -12,12 +13,24 @@ const includeEvent = {
     association: 'event',
     attributes: [
         'id', 'title', 'type', 'startsAt', 'endsAt', 'coverUrl', 'status', 'capacity', 'seatsTaken', 'categoryId',
-        'organizerId', 'locationCity', 'locationVenue', 'locationOnline', 'locationUrl'
+        'organizerId', 'timezone', 'locationCity', 'locationVenue', 'locationOnline', 'locationUrl'
     ],
     include: [{ association: 'category', attributes: ['id', 'name', 'color'] }]
 };
 
-const withEvent = (id, transaction) => Registration.findByPk(id, { include: [includeEvent], transaction });
+// Регистрация с мероприятием; ссылка подключения – только для активной регистрации опубликованного мероприятия
+const withEvent = async (id, transaction) => {
+    const registration = await Registration.findByPk(id, { include: [includeEvent], transaction });
+    revealIfActive(registration);
+    return registration;
+};
+
+function revealIfActive(registration) {
+    if (registration?.event && registration.status !== 'cancelled' && registration.event.status === 'published') {
+        registration.event.revealLink();
+    }
+    return registration;
+}
 
 // Бронирование места: условие «регистрация доступна и есть место» проверяется и счетчик увеличивается
 // одним UPDATE. Строка мероприятия блокируется до конца транзакции, поэтому параллельные запросы
@@ -132,7 +145,10 @@ const cancel = async (id, user) => {
         return cancelInTransaction(registration, who, transaction);
     });
     await notificationService.deliver(ids);
-    return withEvent(id);
+    const registration = await withEvent(id);
+    // после отмены участия писать в чат нельзя: открытые соединения выходят из комнаты
+    notify.revokeChat(registration.userId, registration.eventId, 'registration_cancelled');
+    return registration;
 };
 
 // Изменение: участник меняет комментарий; отметку о посещении (attended) ставят
@@ -155,7 +171,9 @@ const update = async (id, user, { status, comment }) => {
         return [];
     });
     await notificationService.deliver(ids);
-    return withEvent(id);
+    const registration = await withEvent(id);
+    if (status === 'cancelled') notify.revokeChat(registration.userId, registration.eventId, 'registration_cancelled');
+    return registration;
 };
 
 // Мои регистрации. По умолчанию – только активные; status=cancelled – история отмен, status=all – все
@@ -166,11 +184,12 @@ const listMine = async (userId, { when = 'all', status = 'active' } = {}) => {
     const now = new Date();
     const eventWhere = when === 'upcoming' ? { startsAt: { [Op.gte]: now } }
         : when === 'past' ? { startsAt: { [Op.lt]: now } } : undefined;
-    return Registration.findAll({
+    const list = await Registration.findAll({
         where,
         include: [{ ...includeEvent, where: eventWhere, required: true }],
         order: [[{ model: Event, as: 'event' }, 'startsAt', 'ASC'], ['createdAt', 'DESC'], ['id', 'DESC']]
     });
+    return list.map(revealIfActive);
 };
 
 // Участники мероприятия (организатор-владелец или администратор). Email участников выдается

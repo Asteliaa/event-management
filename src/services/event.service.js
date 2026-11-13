@@ -2,6 +2,7 @@ const { Op, QueryTypes } = require('sequelize');
 const { sequelize, Event, Registration, Reminder, Favorite, User } = require('../models');
 const { assertCanManageEvent, canManageEvent, isAdmin } = require('./access');
 const notificationService = require('./notification.service');
+const notify = require('../socket/notify');
 const ApiError = require('../utils/ApiError');
 const { paginate, pageResult, likePattern } = require('../utils/pagination');
 const reminderService = require('./reminder.service');
@@ -74,19 +75,24 @@ const findOrFail = async (id, user) => {
 // напоминания и признак «в избранном»
 const getById = async (id, user) => {
     const event = await findOrFail(id, user);
-    const result = event.toJSON();
-    result.canManage = canManageEvent(user, event);
+    const canManage = canManageEvent(user, event);
+    let extra = {};
     if (user) {
         const [registration, reminders, favorite] = await Promise.all([
             Registration.findOne({ where: { eventId: id, userId: user.id, status: { [Op.ne]: 'cancelled' } } }),
             Reminder.findAll({ where: { eventId: id, userId: user.id, status: ['pending', 'sent'] }, order: [['offsetMinutes', 'DESC']] }),
             Favorite.count({ where: { eventId: id, userId: user.id } })
         ]);
-        result.myRegistration = registration ? registration.toJSON() : null;
-        result.myReminders = reminders.map((r) => r.toJSON());
-        result.isFavorite = favorite > 0;
+        extra = {
+            myRegistration: registration ? registration.toJSON() : null,
+            myReminders: reminders.map((r) => r.toJSON()),
+            isFavorite: favorite > 0
+        };
+        // ссылка подключения – активному участнику опубликованного мероприятия
+        if (registration && event.status === 'published') event.revealLink();
     }
-    return result;
+    if (canManage) event.revealLink();
+    return { ...event.toJSON(), canManage, ...extra };
 };
 
 // Поля запроса → атрибуты модели (location раскладывается по столбцам, category → categoryId)
@@ -159,7 +165,10 @@ const assertPublishable = (e) => {
     if (details.length) throw validationError(details);
 };
 
-const reload = (id) => Event.findByPk(id, { include: [includeCategory, { association: 'organizer', attributes: ['id', 'name'] }] });
+// Результат действий владельца или администратора: ссылка подключения им доступна
+const reload = async (id) => (await Event.findByPk(id, {
+    include: [includeCategory, { association: 'organizer', attributes: ['id', 'name'] }]
+})).revealLink();
 
 // Создает организатор или администратор; владелец – создатель (администратор может сразу назначить другого).
 // По умолчанию создается черновик; status = published – создать и сразу опубликовать
@@ -187,7 +196,7 @@ const sameTime = (a, b) => (a ? a.getTime() : null) === (b ? b.getTime() : null)
 // Все изменения и уведомления – одна транзакция; отправка в Socket.IO – после фиксации
 const update = async (id, data, user) => {
     const attrs = toAttributes(data);
-    const { eventId, notificationIds } = await sequelize.transaction(async (transaction) => {
+    const { eventId, notificationIds, previousOwner } = await sequelize.transaction(async (transaction) => {
         // блокировка строки: регистрации и планировщик напоминаний ждут окончания изменения
         const event = await Event.findByPk(id, { transaction, lock: transaction.LOCK.UPDATE });
         if (!event || (event.status === 'draft' && !canManageEvent(user, event))) throw ApiError.notFound('Мероприятие не найдено');
@@ -199,6 +208,7 @@ const update = async (id, data, user) => {
         }
 
         const before = { startsAt: event.startsAt, endsAt: event.endsAt, phase: event.phase };
+        const beforeOwner = event.organizerId;
         const beforeLocation = Object.fromEntries(LOCATION_ATTRS.map((a) => [a, event.get(a)]));
         event.set(attrs);
         assertDates(event);
@@ -245,9 +255,11 @@ const update = async (id, data, user) => {
         } else {
             await event.save({ transaction });
         }
-        return { eventId: event.id, notificationIds: ids };
+        return { eventId: event.id, notificationIds: ids, previousOwner: beforeOwner !== event.organizerId ? beforeOwner : null };
     });
     await notificationService.deliver(notificationIds);
+    // прежний владелец (после передачи мероприятия) теряет доступ к чату, если он не участник
+    if (previousOwner) notify.revokeChat(previousOwner, eventId, 'ownership_transferred');
     return reload(eventId);
 };
 
@@ -302,6 +314,8 @@ const cancel = async (id, user, { reason } = {}) => {
         return { eventId: event.id, ids: created };
     });
     await notificationService.deliver(ids);
+    // чат отмененного мероприятия становится доступен только для чтения
+    notify.toRooms([notify.rooms.event(String(eventId))], 'chat:readonly', { eventId: String(eventId) });
     return reload(eventId);
 };
 
@@ -344,7 +358,7 @@ const listManaged = async (user, query) => {
     const byId = new Map(counts.map((c) => [String(c.event_id), c]));
     const items = rows.map((e) => {
         const c = byId.get(String(e.id)) || { active: 0, attended: 0, cancelled: 0 };
-        return { ...e.toJSON(), registrations: { active: c.active, attended: c.attended, cancelled: c.cancelled } };
+        return { ...e.revealLink().toJSON(), registrations: { active: c.active, attended: c.attended, cancelled: c.cancelled } };
     });
     return pageResult(items, count, page);
 };

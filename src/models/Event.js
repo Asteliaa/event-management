@@ -33,6 +33,12 @@ class Event extends Model {
         };
     }
 
+    publicLocation() {
+        const loc = this.location;
+        if (!this.linkVisible) delete loc.url;
+        return Object.keys(loc).length ? loc : undefined;
+    }
+
     get location() {
         return compact(Object.fromEntries(Object.entries(LOCATION_COLUMNS).map(([key, attr]) => [key, this.get(attr)])));
     }
@@ -67,6 +73,14 @@ class Event extends Model {
         return this.capacity === null || this.capacity === undefined || this.seatsTaken < this.capacity;
     }
 
+    // Ссылка подключения выдается только тем, кому она положена: активному участнику, организатору-владельцу
+    // и администратору. По умолчанию toJSON ее не содержит; сервис открывает ее явно (revealLink)
+    // после проверки прав – так ссылка не попадает в каталог, похожие, избранное, уведомления и рассылки
+    revealLink() {
+        this.linkVisible = true;
+        return this;
+    }
+
     toJSON() {
         const v = this.get({ plain: false });
         const json = {
@@ -89,7 +103,7 @@ class Event extends Model {
             coverUrl: v.coverUrl,
             capacity: v.capacity,
             seatsTaken: v.seatsTaken,
-            location: Object.values(LOCATION_COLUMNS).some((a) => a in this.dataValues) ? this.location : undefined,
+            location: Object.values(LOCATION_COLUMNS).some((a) => a in this.dataValues) ? this.publicLocation() : undefined,
             tags: v.tags,
             createdAt: v.createdAt,
             updatedAt: v.updatedAt

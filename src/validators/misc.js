@@ -38,7 +38,8 @@ const userList = z.object({
     ...pageQuery,
     limit: z.coerce.number().int().min(1).max(100).default(20),
     search: z.string().trim().max(100).optional(),
-    role: z.enum(User.ROLES).optional()
+    role: z.enum(User.ROLES).optional(),
+    status: z.enum(User.STATUSES).optional()
 });
 
 const userUpdate = z.object({

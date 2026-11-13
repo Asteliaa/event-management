@@ -1,4 +1,4 @@
-const { useTestDB, createUser, createAdmin, registerUser, createEvent, missingId } = require('./helpers');
+const { useTestDB, createUser, createAdmin, createOrganizer, registerUser, createEvent, missingId } = require('./helpers');
 const http = require('http');
 const jwt = require('jsonwebtoken');
 const request = require('supertest');
@@ -81,9 +81,12 @@ describe('Чат мероприятия', () => {
     it('сообщение сохраняется в БД с именем автора и приходит другим участникам', async () => {
         const event = await createEvent({ title: 'Вебинар' });
         const anna = await createUser({ name: 'Анна' });
+        const ivan = await createUser({ name: 'Иван' });
+        await registerUser(event, anna);
+        await registerUser(event, ivan);
         const a = await connectAs(anna);
-        const i = await connectAs(await createUser({ name: 'Иван' }));
-        expect(await join(a, event)).toMatchObject({ ok: true, event: { title: 'Вебинар' }, history: [] });
+        const i = await connectAs(ivan);
+        expect(await join(a, event)).toMatchObject({ ok: true, event: { title: 'Вебинар' }, history: [], readOnly: false });
         await join(i, event);
 
         const received = waitFor(i, 'chat:message');
@@ -92,13 +95,17 @@ describe('Чат мероприятия', () => {
         expect(await received).toMatchObject({ text: 'Привет!', author: 'Анна' });
         expect(await Message.count({ where: { eventId: event.id } })).toBe(1);
 
-        const history = await join(await connectAs(await createUser()), event);
+        const late = await createUser();
+        await registerUser(event, late);
+        const history = await join(await connectAs(late), event);
         expect(history.history.map((m) => m.text)).toEqual(['Привет!']);
     });
 
     it('нельзя писать без входа в комнату, пустые и слишком длинные сообщения', async () => {
         const event = await createEvent();
-        const a = await connectAs(await createUser());
+        const user = await createUser();
+        await registerUser(event, user);
+        const a = await connectAs(user);
         expect(await a.emitWithAck('chat:message', { eventId: event.id, text: 'Привет' })).toMatchObject({ ok: false });
         await join(a, event);
         expect(await a.emitWithAck('chat:message', { eventId: event.id, text: '   ' })).toMatchObject({ ok: false, error: 'Пустое сообщение' });
@@ -107,12 +114,121 @@ describe('Чат мероприятия', () => {
 
     it('ограничение частоты: не больше 5 сообщений за 5 секунд', async () => {
         const event = await createEvent();
-        const a = await connectAs(await createUser());
+        const user = await createUser();
+        await registerUser(event, user);
+        const a = await connectAs(user);
         await join(a, event);
         const results = [];
         for (let n = 0; n < 6; n += 1) results.push(await a.emitWithAck('chat:message', { eventId: event.id, text: `#${n}` }));
         expect(results.filter((r) => r.ok)).toHaveLength(5);
         expect(results[5].error).toMatch(/Слишком много/);
+    });
+});
+
+describe('Права доступа к чату', () => {
+    it('постороннему и гостю – нет доступа; черновик – только владелец и администратор', async () => {
+        const organizer = await createOrganizer();
+        const event = await createEvent({ organizerId: organizer.id });
+        const draft = await createEvent({ organizerId: organizer.id, status: 'draft' });
+        const stranger = await connectAs(await createUser());
+        expect(await join(stranger, event)).toMatchObject({ ok: false, error: 'Чат доступен участникам мероприятия' });
+        expect(await join(stranger, draft)).toMatchObject({ ok: false, error: 'Мероприятие не найдено' });
+        const o = await connectAs(organizer);
+        expect(await join(o, event)).toMatchObject({ ok: true, readOnly: false });
+        expect(await join(o, draft)).toMatchObject({ ok: true });
+        expect(await join(await connectAs(await createAdmin()), draft)).toMatchObject({ ok: true });
+        // чужой организатор не управляет мероприятием
+        expect(await join(await connectAs(await createOrganizer()), event)).toMatchObject({ ok: false });
+    });
+
+    it('отмена участия: открытое соединение выходит из комнаты и не может писать; новый вход запрещен', async () => {
+        const event = await createEvent();
+        const user = await createUser();
+        const other = await createUser();
+        const { registration } = await registerUser(event, user);
+        await registerUser(event, other);
+        const a = await connectAs(user);
+        const b = await connectAs(other);
+        await join(a, event);
+        await join(b, event);
+
+        const revoked = waitFor(a, 'chat:revoked');
+        const res = await request(app).delete(`/api/v1/registrations/${registration.id}`).set('Authorization', user.auth);
+        expect(res.status).toBe(200);
+        expect(await revoked).toEqual({ eventId: event.id, reason: 'registration_cancelled' });
+
+        let bGot = false;
+        b.on('chat:message', () => { bGot = true; });
+        expect(await a.emitWithAck('chat:message', { eventId: event.id, text: 'Я еще тут?' })).toMatchObject({ ok: false });
+        expect(await join(a, event)).toMatchObject({ ok: false });
+        await new Promise((r) => setTimeout(r, 100));
+        expect(bGot).toBe(false);
+        expect(await Message.count()).toBe(0);
+    });
+
+    it('проверка на каждом сообщении: регистрацию отменили в обход сокет-уведомления', async () => {
+        const event = await createEvent();
+        const user = await createUser();
+        const { registration } = await registerUser(event, user);
+        const a = await connectAs(user);
+        await join(a, event);
+        await registration.update({ status: 'cancelled', cancelledAt: new Date(), cancelledBy: 'admin' });
+        expect(await a.emitWithAck('chat:message', { eventId: event.id, text: 'Привет' }))
+            .toMatchObject({ ok: false, revoked: true });
+    });
+
+    it('отмена мероприятия: история доступна, писать нельзя ни участникам, ни организатору', async () => {
+        const organizer = await createOrganizer();
+        const event = await createEvent({ organizerId: organizer.id });
+        const user = await createUser();
+        await registerUser(event, user);
+        const a = await connectAs(user);
+        await join(a, event);
+        await a.emitWithAck('chat:message', { eventId: event.id, text: 'До отмены' });
+
+        const readonly = waitFor(a, 'chat:readonly');
+        const res = await request(app).post(`/api/v1/events/${event.id}/cancel`).set('Authorization', organizer.auth)
+            .send({ reason: 'Докладчик заболел' });
+        expect(res.status).toBe(200);
+        expect(await readonly).toEqual({ eventId: event.id });
+        expect(await a.emitWithAck('chat:message', { eventId: event.id, text: 'После' })).toMatchObject({ ok: false, readOnly: true });
+
+        const again = await join(await connectAs(user), event);
+        expect(again).toMatchObject({ ok: true, readOnly: true });
+        expect(again.history.map((m) => m.text)).toEqual(['До отмены']);
+        const o = await connectAs(organizer);
+        expect(await join(o, event)).toMatchObject({ ok: true, readOnly: true });
+        expect(await o.emitWithAck('chat:message', { eventId: event.id, text: 'Орг' })).toMatchObject({ ok: false, readOnly: true });
+    });
+
+    it('передача мероприятия другому организатору закрывает чат прежнему владельцу', async () => {
+        const admin = await createAdmin();
+        const before = await createOrganizer();
+        const after = await createOrganizer();
+        const event = await createEvent({ organizerId: before.id });
+        const s = await connectAs(before);
+        await join(s, event);
+        const revoked = waitFor(s, 'chat:revoked');
+        const res = await request(app).patch(`/api/v1/events/${event.id}`).set('Authorization', admin.auth).send({ organizer: after.id });
+        expect(res.status).toBe(200);
+        expect(await revoked).toEqual({ eventId: event.id, reason: 'ownership_transferred' });
+        expect(await join(s, event)).toMatchObject({ ok: false });
+    });
+
+    it('блокировка и деактивация завершают открытые соединения, переподключиться со старым токеном нельзя', async () => {
+        const admin = await createAdmin();
+        const user = await createUser();
+        const s = await connectAs(user);
+        const gone = waitFor(s, 'disconnect');
+        await request(app).patch(`/api/v1/admin/users/${user.id}`).set('Authorization', admin.auth).send({ blocked: true });
+        expect(await gone).toBe('io server disconnect');
+        await expect(connectAs(user)).rejects.toThrow('Доступ запрещен');
+
+        const other = await createUser();
+        const t = await connectAs(other);
+        const gone2 = waitFor(t, 'disconnect');
+        await request(app).post('/api/v1/auth/me/deactivate').set('Authorization', other.auth).send({ password: 'secret123' });
+        expect(await gone2).toBe('io server disconnect');
     });
 });
 

@@ -107,6 +107,7 @@
 .chat__typing { min-height: 20px; margin: 0; padding: var(--sp-1) var(--sp-5) 0; font-size: var(--fs-xs); color: var(--muted); }
 .chat__form { display: flex; gap: var(--sp-2); padding: var(--sp-2) var(--sp-4) var(--sp-4); }
 .chat .form-error { margin: 0 var(--sp-4) var(--sp-2); }
+.chat__notice { margin: 0; padding: var(--sp-3) var(--sp-4) var(--sp-4); }
 
 /* ---------- Вход и регистрация ---------- */
 .auth { display: grid; place-items: center; padding: var(--sp-12) var(--sp-4); }

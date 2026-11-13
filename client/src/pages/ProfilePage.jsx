@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Link, NavLink, Outlet } from 'react-router';
+import { Link, NavLink, Outlet, useNavigate } from 'react-router';
 import { BellRing, CalendarCheck, CalendarDays, Check, Heart, Settings, Trash2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useNotifications } from '../context/NotificationContext.jsx';
@@ -8,7 +8,7 @@ import { useDocumentTitle } from '../hooks/useDocumentTitle.js';
 import { authApi, remindersApi } from '../api/index.js';
 import { getErrorMessage, getFieldErrors } from '../api/client.js';
 import EventRow, { DateBlock } from '../components/events/EventCard.jsx';
-import { EmptyState, ErrorState, Field, Spinner } from '../components/ui/index.jsx';
+import { EmptyState, ErrorState, Field, Modal, Spinner } from '../components/ui/index.jsx';
 import { STATUS_LABELS, TYPE_LABELS, formatDateTime, formatOffset, formatShort, formatTime, placeOf, timeUntil } from '../utils/format.js';
 
 const TABS = [
@@ -152,7 +152,7 @@ export function MyReminders() {
 
 export function ProfileSettings() {
   useDocumentTitle('Настройки');
-  const { user, updateUser } = useAuth();
+  const { user, updateUser, updateToken } = useAuth();
   const { notify } = useNotifications();
   const [profile, setProfile] = useState({ name: user.name, city: user.city || '' });
   const [passwords, setPasswords] = useState({ currentPassword: '', newPassword: '' });
@@ -179,9 +179,10 @@ export function ProfileSettings() {
     setBusy('password');
     setErrors({});
     try {
-      await authApi.changePassword(passwords);
+      const { token } = await authApi.changePassword(passwords);
+      updateToken(token);
       setPasswords({ currentPassword: '', newPassword: '' });
-      notify('Пароль изменен', 'success');
+      notify('Пароль изменен, другие сеансы завершены', 'success');
     } catch (err) {
       setErrors(getFieldErrors(err));
       notify(getErrorMessage(err), 'error');
@@ -221,6 +222,86 @@ export function ProfileSettings() {
           </button>
         </div>
       </form>
+      <AccountActions />
     </div>
+  );
+}
+
+// Деактивация и удаление – разные действия, оба подтверждаются паролем
+const ACCOUNT_ACTIONS = {
+  deactivate: {
+    title: 'Деактивировать аккаунт',
+    confirm: 'Деактивировать',
+    text: 'Вход и уведомления будут приостановлены, все сеансы завершатся. Данные и регистрации сохранятся. '
+      + 'Чтобы вернуть аккаунт, просто войдите с паролем.',
+  },
+  delete: {
+    title: 'Удалить аккаунт',
+    confirm: 'Удалить навсегда',
+    text: 'Действие необратимо. Имя, email и город будут удалены, тексты ваших сообщений в чатах заменены, '
+      + 'комментарии к регистрациям очищены, уведомления и избранное удалены. Регистрации на будущие мероприятия '
+      + 'отменятся, а прошедшие останутся в статистике организаторов без ваших данных.',
+  },
+};
+
+function AccountActions() {
+  const { logout } = useAuth();
+  const { notify } = useNotifications();
+  const navigate = useNavigate();
+  const [action, setAction] = useState(null);
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  const close = () => {
+    setAction(null);
+    setPassword('');
+    setError('');
+  };
+
+  async function submit(e) {
+    e.preventDefault();
+    setBusy(true);
+    setError('');
+    try {
+      if (action === 'delete') await authApi.deleteAccount(password);
+      else await authApi.deactivate(password);
+      logout();
+      notify(action === 'delete' ? 'Аккаунт удален' : 'Аккаунт деактивирован', 'success');
+      navigate('/');
+    } catch (err) {
+      setError(getErrorMessage(err));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const current = action && ACCOUNT_ACTIONS[action];
+  return (
+    <section className="card panel">
+      <h3 className="panel__title">Аккаунт</h3>
+      <p className="muted">Деактивацию можно отменить входом. Удаление необратимо.</p>
+      <div className="panel__footer">
+        <button type="button" className="btn btn--ghost" onClick={() => setAction('deactivate')}>Деактивировать</button>
+        <button type="button" className="btn btn--danger" onClick={() => setAction('delete')}>Удалить аккаунт</button>
+      </div>
+      {current && (
+        <Modal title={current.title} onClose={close}>
+          <form className="form" onSubmit={submit}>
+            <p>{current.text}</p>
+            <Field label="Пароль для подтверждения" error={error}>
+              <input type="password" value={password} autoComplete="current-password" autoFocus
+                onChange={(e) => setPassword(e.target.value)} />
+            </Field>
+            <div className="panel__footer">
+              <button type="button" className="btn btn--ghost" onClick={close}>Отмена</button>
+              <button type="submit" className={`btn ${action === 'delete' ? 'btn--danger' : 'btn--primary'}`} disabled={busy || !password}>
+                {busy ? 'Подождите…' : current.confirm}
+              </button>
+            </div>
+          </form>
+        </Modal>
+      )}
+    </section>
   );
 }

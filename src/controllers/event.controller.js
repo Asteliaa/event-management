@@ -3,6 +3,7 @@ const registrationService = require('../services/registration.service');
 const notify = require('../socket/notify');
 const { eventToIcs } = require('../utils/ics');
 const { toCsv } = require('../utils/csv');
+const ApiError = require('../utils/ApiError');
 
 // Контроллер только разбирает запрос и формирует ответ; логика – в сервисах
 
@@ -14,7 +15,10 @@ const similar = async (req, res) => res.json(await eventService.similar(req.para
 // Рассылка всем подключенным: только видимые в каталоге мероприятия и без ссылки подключения
 const publicPayload = (event) => {
     const json = event.toJSON();
-    if (json.location) json.location = { ...json.location, url: undefined };
+    if (json.location) {
+        const { url, ...location } = json.location;   // eslint-disable-line no-unused-vars
+        json.location = location;
+    }
     return json;
 };
 const broadcast = (name, event, by) => {
@@ -59,7 +63,9 @@ const remove = async (req, res) => {
 
 // GET /events/:id/calendar.ics – файл для добавления в календарь
 const calendar = async (req, res) => {
+    // ссылка подключения в файл календаря не включается: файл скачивается без авторизации и пересылается
     const event = await eventService.findOrFail(req.params.id, req.user);
+    if (!event.startsAt) throw ApiError.conflict('Дата мероприятия еще не назначена', 'EVENT_NO_DATE');
     res.type('text/calendar; charset=utf-8')
         .attachment(`event-${event.id}.ics`)
         .send(eventToIcs(event.toJSON()));

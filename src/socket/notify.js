@@ -30,4 +30,18 @@ const eventStaffRooms = (event) => {
     return list;
 };
 
-module.exports = { rooms, setIO, toAll, toRooms, eventStaffRooms };
+// Завершить все соединения пользователя (блокировка, деактивация, удаление, смена пароля или роли):
+// при переподключении сокет снова проходит проверку токена
+const disconnectUser = (userId) => {
+    if (io) io.in(rooms.user(String(userId))).disconnectSockets(true);
+};
+
+// Убрать пользователя из комнаты чата мероприятия (отмена участия, потеря прав)
+const revokeChat = (userId, eventId, reason) => {
+    if (!io) return;
+    const personal = rooms.user(String(userId));
+    io.to(personal).emit('chat:revoked', { eventId: String(eventId), reason });
+    io.in(personal).socketsLeave(rooms.event(String(eventId)));
+};
+
+module.exports = { rooms, setIO, toAll, toRooms, eventStaffRooms, disconnectUser, revokeChat };

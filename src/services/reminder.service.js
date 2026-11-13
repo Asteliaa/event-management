@@ -156,13 +156,26 @@ const cancelForEvent = (eventId, transaction) => Reminder.update(
 // Условия: мероприятие опубликовано, регистрация активна, версия расписания совпадает.
 // Возвращает id созданных уведомлений (отправка в Socket.IO – после фиксации)
 const takeDue = (now = new Date(), batch = 100) => sequelize.transaction(async (transaction) => {
+    // наступившие напоминания, которые отправлять уже не нужно, помечаются skipped:
+    // пользователь заблокирован или деактивирован (после возврата аккаунта старые напоминания не приходят задним числом)
+    // либо мероприятие уже началось (например, сервер не работал в момент отправки)
+    await sequelize.query(
+        `UPDATE reminders rm SET status = 'skipped', updated_at = now(),
+             cancel_reason = CASE WHEN u.blocked OR u.status <> 'active' THEN 'user_inactive' ELSE 'event_started' END
+         FROM users u, events e
+         WHERE rm.user_id = u.id AND rm.event_id = e.id AND rm.status = 'pending' AND rm.remind_at <= :now
+           AND (u.blocked OR u.status <> 'active' OR e.starts_at <= :now)`,
+        { replacements: { now }, transaction }
+    );
     const due = await sequelize.query(
         `SELECT rm.id, rm.user_id, rm.event_id, rm.registration_id, rm.offset_minutes, rm.schedule_version
          FROM reminders rm
          JOIN events e ON e.id = rm.event_id
          JOIN registrations reg ON reg.id = rm.registration_id
+         JOIN users u ON u.id = rm.user_id
          WHERE rm.status = 'pending' AND rm.remind_at <= :now
-           AND e.status = 'published' AND reg.status <> 'cancelled'
+           AND e.status = 'published' AND reg.status <> 'cancelled' AND e.starts_at > :now
+           AND u.status = 'active' AND NOT u.blocked
            AND rm.schedule_version = e.schedule_version
          ORDER BY rm.remind_at, rm.id
          LIMIT :batch

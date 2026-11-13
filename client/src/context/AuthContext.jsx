@@ -14,6 +14,8 @@ function authReducer(state, action) {
       return { status: 'authenticated', user: action.user, token: action.token };
     case 'USER_LOADED':
       return { ...state, status: 'authenticated', user: action.user };
+    case 'TOKEN_UPDATED':
+      return { ...state, token: action.token };
     case 'USER_UPDATED':
       return { ...state, user: { ...state.user, ...action.user } };
     case 'LOGOUT':
@@ -65,6 +67,11 @@ export function AuthProvider({ children }) {
     login: (credentials) => authApi.login(credentials).then(applyAuth),
     register: (data) => authApi.register(data).then(applyAuth),
     updateUser: (user) => dispatch({ type: 'USER_UPDATED', user }),
+    // новый токен после смены пароля: сокет переподключается с ним
+    updateToken: (token) => {
+      tokenStorage.set(token);
+      dispatch({ type: 'TOKEN_UPDATED', token });
+    },
     logout,
   }), [state, applyAuth, logout]);
 

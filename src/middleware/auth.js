@@ -19,8 +19,11 @@ const loadUser = async (token) => {
         throw ApiError.unauthorized('Недействительный или просроченный токен');
     }
     const user = isValidId(String(payload.id)) ? await User.findByPk(payload.id) : null;
-    if (!user) throw ApiError.unauthorized('Пользователь не найден');
+    if (!user || user.status === 'deleted') throw ApiError.unauthorized('Пользователь не найден');
+    // токен выпущен до блокировки, деактивации, смены пароля или роли
+    if ((payload.tv ?? 0) !== user.tokenVersion) throw ApiError.unauthorized('Сеанс завершен, войдите снова');
     if (user.blocked) throw ApiError.forbidden('Учетная запись заблокирована');
+    if (user.status !== 'active') throw ApiError.forbidden('Учетная запись деактивирована');
     return { id: String(user.id), email: user.email, name: user.name, role: user.role };
 };
 

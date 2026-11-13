@@ -9,7 +9,7 @@ const overview = async () => {
     const [events, upcoming, users, registrations, remindersSent, byType, byCategory, top, timeline] = await Promise.all([
         Event.count(),
         Event.count({ where: { startsAt: { [Op.gte]: now } } }),
-        User.count(),
+        User.count({ where: { status: { [Op.ne]: 'deleted' } } }),
         select(`SELECT count(*) FILTER (WHERE status <> 'cancelled')::int AS count,
                        count(*) FILTER (WHERE status = 'cancelled')::int AS cancelled
                 FROM registrations`),

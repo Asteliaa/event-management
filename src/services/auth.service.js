@@ -4,8 +4,10 @@ const config = require('../config');
 const { User } = require('../models');
 const ApiError = require('../utils/ApiError');
 
+// tv – версия токенов пользователя: после блокировки, деактивации, удаления или смены пароля
+// версия в БД увеличивается и ранее выданные токены отклоняются
 const signToken = (user) => jwt.sign(
-    { id: String(user.id), email: user.email, role: user.role },
+    { id: String(user.id), role: user.role, tv: user.tokenVersion ?? 0 },
     config.jwt.secret,
     { expiresIn: config.jwt.expiresIn }
 );
@@ -32,8 +34,15 @@ const login = async ({ email, password }) => {
     const user = await User.scope('withPassword').findOne({ where: { email } });
     // одинаковый ответ для неизвестного email и неверного пароля: нельзя перебрать адреса
     const valid = user && await bcrypt.compare(password, user.passwordHash);
-    if (!valid) throw ApiError.unauthorized('Неверный email или пароль');
+    if (!valid || user.status === 'deleted') throw ApiError.unauthorized('Неверный email или пароль');
     if (user.blocked) throw ApiError.forbidden('Учетная запись заблокирована');
+    if (user.status === 'deactivated') {
+        if (user.deactivatedBy === 'admin') {
+            throw new ApiError(403, 'Учетная запись деактивирована администратором', { code: 'ACCOUNT_DEACTIVATED' });
+        }
+        // деактивацию, выполненную самим пользователем, отменяет вход с паролем
+        await user.update({ status: 'active', deactivatedAt: null, deactivatedBy: null });
+    }
     return { user: user.toJSON(), token: signToken(user) };
 };
 
@@ -56,7 +65,10 @@ const changePassword = async (userId, { currentPassword, newPassword }) => {
         throw ApiError.badRequest('Текущий пароль указан неверно');
     }
     user.passwordHash = await bcrypt.hash(newPassword, config.bcryptRounds);
+    // другие сеансы (старые токены) завершаются, текущий получает новый токен
+    user.tokenVersion += 1;
     await user.save();
+    return { token: signToken(user) };
 };
 
 module.exports = { register, login, getMe, updateProfile, changePassword, signToken };

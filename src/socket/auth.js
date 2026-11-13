@@ -21,7 +21,7 @@ module.exports = async (socket, next) => {
 
     try {
         const user = isValidId(String(payload.id)) ? await User.findByPk(payload.id) : null;
-        if (!user || user.blocked) return next(new Error('Доступ запрещен'));
+        if (!user || !user.canSignIn || (payload.tv ?? 0) !== user.tokenVersion) return next(new Error('Доступ запрещен'));
         socket.data.user = { id: String(user.id), email: user.email, name: user.name, role: user.role };
         next();
     } catch {

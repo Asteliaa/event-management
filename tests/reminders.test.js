@@ -156,7 +156,7 @@ describe('Планировщик напоминаний', () => {
         await Event.update({ status: 'cancelled', cancelledAt: new Date() }, { where: { id: event.id } });
 
         const emitted = [];
-        notify.setIO({ to: (rooms) => ({ emit: (name, payload) => emitted.push(payload) }) });
+        notify.setIO({ to: () => ({ emit: (name, payload) => emitted.push(payload) }) });
         const later = new Date(Date.now() + 6 * 60e3);
         expect(await scheduler.runOnce(later)).toBe(1);
         expect(emitted.map((p) => p.event.id)).toEqual([other.id]);

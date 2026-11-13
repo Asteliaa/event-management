@@ -6,20 +6,21 @@ const { useTestDB } = require('./helpers');
 const { sequelize } = require('../src/models');
 const migrator = require('../src/db/migrator');
 
+// до useTestDB: хуки afterAll выполняются в порядке объявления, соединение закрывается последним
+afterAll(async () => {
+    // на случай ошибки посередине: схема возвращается к последней версии для остальных тестов
+    await migrator.up();
+});
 useTestDB();
 
 const B1 = '20261112000001-organizer-and-single-seat-registrations.js';
 const select = (sql) => sequelize.query(sql, { type: QueryTypes.SELECT });
 const q = (sql) => sequelize.query(sql);
 
-afterAll(async () => {
-    // на случай ошибки посередине: схема возвращается к последней версии для остальных тестов
-    await migrator.up();
-});
-
 const seedStageA = async () => {
     await q(`INSERT INTO users (name, email, password_hash) VALUES
         ('Анна', 'anna@demo.eventhub.local', 'x'), ('Иван', 'ivan@demo.eventhub.local', 'x')`);
+    await q(`INSERT INTO users (name, email, password_hash, blocked) VALUES ('Петр', 'petr@demo.eventhub.local', 'x', true)`);
     await q(`INSERT INTO events (title, type, starts_at, capacity, seats_taken) VALUES
         ('Конференция', 'conference', now() + interval '10 days', 10, 4),
         ('Вебинар', 'webinar', now() + interval '5 days', NULL, 0)`);
@@ -34,7 +35,7 @@ const seedStageA = async () => {
 };
 
 describe('Миграции этапа Б на данных этапа А', () => {
-    it('Б1–Б2: мультибилетные регистрации: одна регистрация – одно место, число билетов сохранено, откат восстанавливает', async () => {
+    it('Б1–Б3: мультибилетные регистрации: одна регистрация – одно место, число билетов сохранено, откат восстанавливает', async () => {
         await migrator.down({ to: B1 });
         await seedStageA();
         await migrator.up();
@@ -66,12 +67,23 @@ describe('Миграции этапа Б на данных этапа А', () =>
         expect(await select(`SELECT user_id::int, type, reminder_id::int, dedup_key, read_at IS NOT NULL AS read FROM notifications`))
             .toEqual([{ user_id: 2, type: 'reminder', reminder_id: 3, dedup_key: 'reminder:3:v1', read: true }]);
 
+        // Б3: все существующие аккаунты активны, блокировка сохранена с отметкой времени
+        expect(await select(`SELECT status, blocked, blocked_at IS NOT NULL AS blocked_at, token_version FROM users ORDER BY id`))
+            .toEqual([
+                { status: 'active', blocked: false, blocked_at: false, token_version: 0 },
+                { status: 'active', blocked: false, blocked_at: false, token_version: 0 },
+                { status: 'active', blocked: true, blocked_at: true, token_version: 0 }
+            ]);
+
         // откат возвращает прежний формат без потерь
+        // (обезличенный аккаунт получает служебный адрес, так как до Б3 email обязателен)
+        await q(`UPDATE users SET status = 'deleted', deleted_at = now(), email = NULL, name = 'Удаленный пользователь' WHERE id = 3`);
         await migrator.down({ to: B1 });
         expect(await select('SELECT tickets FROM registrations ORDER BY id')).toEqual([{ tickets: 3 }, { tickets: 1 }, { tickets: 2 }]);
         expect(await select('SELECT seats_taken FROM events ORDER BY id')).toEqual([{ seats_taken: 4 }, { seats_taken: 0 }]);
         expect(await select(`SELECT status, read_at IS NOT NULL AS read FROM reminders ORDER BY id`))
             .toEqual([{ status: 'pending', read: false }, { status: 'pending', read: false }, { status: 'sent', read: true }]);
+        expect(await select('SELECT email FROM users WHERE id = 3')).toEqual([{ email: 'deleted-3@invalid.local' }]);
         await migrator.up();
     });
 });

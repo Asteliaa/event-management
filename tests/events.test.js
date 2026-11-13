@@ -1,7 +1,7 @@
 const { useTestDB, createUser, createAdmin, createOrganizer, createEvent, createCategory, createEvents, inDays, missingId } = require('./helpers');
 const request = require('supertest');
 const app = require('../src/app');
-const { Event, Registration, Reminder, Message, Favorite } = require('../src/models');
+const { Event, Reminder, Message, Favorite } = require('../src/models');
 
 useTestDB();
 

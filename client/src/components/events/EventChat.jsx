@@ -6,7 +6,9 @@ import { formatTime } from '../../utils/format.js';
 
 const TYPING_TIMEOUT = 2000;
 
-// Чат мероприятия: комната event:<id> на сервере Socket.IO, история хранится в MongoDB
+// Чат мероприятия: комната event:<id> на сервере Socket.IO, история хранится в БД.
+// Права проверяет сервер при входе и на каждом сообщении: после отмены участия доступ закрывается (chat:revoked),
+// после отмены мероприятия чат остается только для чтения (chat:readonly)
 export default function EventChat({ eventId }) {
   const { socket, connected } = useSocket();
   const { user } = useAuth();
@@ -16,6 +18,8 @@ export default function EventChat({ eventId }) {
   const [text, setText] = useState('');
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(true);
+  const [readOnly, setReadOnly] = useState(false);
+  const [denied, setDenied] = useState('');
   const typingTimer = useRef(null);
   const listRef = useRef(null);
 
@@ -25,8 +29,10 @@ export default function EventChat({ eventId }) {
 
     const join = () => socket.emitWithAck('event:join', { eventId }).then((res) => {
       setLoading(false);
-      if (!res.ok) return setError(res.error);
+      if (!res.ok) return setDenied(res.error);
+      setDenied('');
       setError('');
+      setReadOnly(Boolean(res.readOnly));
       setMessages(res.history);
       setMembers(res.members);
       return undefined;
@@ -48,7 +54,18 @@ export default function EventChat({ eventId }) {
       setTyping((prev) => ({ ...prev, [d.user.id]: false }));
     };
 
+    const onRevoked = (d) => {
+      if (d.eventId !== eventId) return;
+      setDenied(d.reason === 'ownership_transferred'
+        ? 'Мероприятие передано другому организатору, чат закрыт'
+        : 'Участие отменено, чат больше недоступен');
+      setMembers([]);
+    };
+    const onReadonly = (d) => d.eventId === eventId && setReadOnly(true);
+
     if (socket.connected) join();
+    socket.on('chat:revoked', onRevoked);
+    socket.on('chat:readonly', onReadonly);
     // после переподключения сервер не помнит комнаты старого сокета – входим заново
     socket.on('connect', join);
     socket.on('chat:message', onMessage);
@@ -62,6 +79,8 @@ export default function EventChat({ eventId }) {
       socket.off('chat:typing', onTyping);
       socket.off('room:joined', onJoined);
       socket.off('room:left', onLeft);
+      socket.off('chat:revoked', onRevoked);
+      socket.off('chat:readonly', onReadonly);
       clearTimeout(typingTimer.current);
     };
   }, [socket, eventId]);
@@ -95,8 +114,19 @@ export default function EventChat({ eventId }) {
       setText('');
       setError('');
     } else {
+      if (res.revoked) setDenied(res.error);
+      if (res.readOnly) setReadOnly(true);
       setError(res.error);
     }
+  }
+
+  if (denied) {
+    return (
+      <section className="card chat">
+        <header className="chat__header"><h3><MessageCircle size={18} /> Чат участников</h3></header>
+        <p className="muted chat__notice">{denied}</p>
+      </section>
+    );
   }
 
   const typingNames = Object.entries(typing).filter(([id, name]) => name && id !== user.id).map(([, n]) => n);
@@ -117,18 +147,24 @@ export default function EventChat({ eventId }) {
         ) : (
           <div key={m.id} className={`chat__msg ${m.user === user.id ? 'is-own' : ''}`}>
             <span className="chat__meta"><b>{m.author}</b> <time>{formatTime(m.createdAt)}</time></span>
-            <span className="chat__text">{m.text}</span>
+            <span className={`chat__text ${m.deleted ? 'muted' : ''}`}>{m.deleted ? <i>{m.text}</i> : m.text}</span>
           </div>
         )))}
       </div>
       <p className="chat__typing">{typingNames.length > 0 && `${typingNames.join(', ')} печатает…`}</p>
-      {error && <p className="form-error">{error}</p>}
-      <form className="chat__form" onSubmit={handleSubmit}>
-        <input placeholder="Сообщение" value={text} onChange={handleChange} maxLength={500} disabled={!connected} aria-label="Сообщение" />
-        <button type="submit" className="btn btn--primary btn--icon" disabled={!connected || !text.trim()} aria-label="Отправить">
-          <Send size={18} />
-        </button>
-      </form>
+      {readOnly ? (
+        <p className="muted chat__notice">Мероприятие отменено: история доступна только для чтения.</p>
+      ) : (
+        <>
+          {error && <p className="form-error">{error}</p>}
+          <form className="chat__form" onSubmit={handleSubmit}>
+            <input placeholder="Сообщение" value={text} onChange={handleChange} maxLength={500} disabled={!connected} aria-label="Сообщение" />
+            <button type="submit" className="btn btn--primary btn--icon" disabled={!connected || !text.trim()} aria-label="Отправить">
+              <Send size={18} />
+            </button>
+          </form>
+        </>
+      )}
     </section>
   );
 }

@@ -1,7 +1,7 @@
 const { useTestDB, createUser, createAdmin, createEvent, createCategory, inDays, missingId } = require('./helpers');
 const request = require('supertest');
 const app = require('../src/app');
-const { Event, Registration, Reminder, Favorite } = require('../src/models');
+const { Event, Favorite } = require('../src/models');
 
 useTestDB();
 
@@ -67,26 +67,21 @@ describe('Администрирование пользователей', () => 
         expect((await request(app).get('/api/v1/admin/users').set('Authorization', user.auth)).status).toBe(403);
     });
 
-    it('назначение роли и блокировка; себя изменить нельзя', async () => {
+    it('назначение роли и блокировка: старый токен отзывается, вход заблокированному запрещен; себя изменить нельзя', async () => {
         const admin = await createAdmin();
         const user = await createUser();
         const res = await request(app).patch(`/api/v1/admin/users/${user.id}`).set('Authorization', admin.auth).send({ blocked: true });
-        expect(res.body.blocked).toBe(true);
-        expect((await request(app).get('/api/v1/auth/me').set('Authorization', user.auth)).status).toBe(403);
+        expect(res.body).toMatchObject({ blocked: true, status: 'active' });
+        expect(res.body.blockedAt).toBeTruthy();
+        expect(res.body.tokenVersion).toBeUndefined();
+        expect((await request(app).get('/api/v1/auth/me').set('Authorization', user.auth)).status).toBe(401);
+        const login = await request(app).post('/api/v1/auth/login').send({ email: user.email, password: 'secret123' });
+        expect(login.status).toBe(403);
         const self = await request(app).patch(`/api/v1/admin/users/${admin.id}`).set('Authorization', admin.auth).send({ role: 'user' });
         expect(self.status).toBe(400);
-    });
-
-    it('удаление пользователя освобождает места и удаляет регистрации и напоминания', async () => {
-        const admin = await createAdmin();
-        const user = await createUser();
-        const event = await createEvent({ capacity: 5 });
-        await request(app).post(`/api/v1/events/${event.id}/registrations`).set('Authorization', user.auth).send({});
-        expect((await request(app).delete(`/api/v1/admin/users/${user.id}`).set('Authorization', admin.auth)).status).toBe(204);
-        expect((await Event.findByPk(event.id)).seatsTaken).toBe(0);
-        expect(await Registration.count()).toBe(0);
-        expect(await Reminder.count()).toBe(0);
-        expect((await request(app).delete(`/api/v1/admin/users/${admin.id}`).set('Authorization', admin.auth)).status).toBe(400);
+        // разблокировка: вход снова возможен
+        await request(app).patch(`/api/v1/admin/users/${user.id}`).set('Authorization', admin.auth).send({ blocked: false });
+        expect((await request(app).post('/api/v1/auth/login').send({ email: user.email, password: 'secret123' })).status).toBe(200);
     });
 });
 

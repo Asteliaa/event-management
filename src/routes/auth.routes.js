@@ -19,6 +19,8 @@ router.put('/me/password', authenticate, validate({ body: schemas.changePassword
 router.get('/me/registrations', authenticate,
     validate({ query: myRegistrations }),
     h(ctrl.myRegistrations));
+router.post('/me/deactivate', authenticate, validate({ body: schemas.confirmPassword }), h(ctrl.deactivateMe));
+router.delete('/me', authenticate, validate({ body: schemas.confirmPassword }), h(ctrl.deleteMe));
 router.get('/me/favorites', authenticate, h(ctrl.myFavorites));
 router.put('/me/favorites/:id', authenticate, validate({ params: idParam }), h(ctrl.addFavorite));
 router.delete('/me/favorites/:id', authenticate, validate({ params: idParam }), h(ctrl.removeFavorite));

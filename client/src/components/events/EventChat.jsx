@@ -46,7 +46,9 @@ export default function EventChat({ eventId }) {
     const onJoined = (d) => {
       if (d.eventId !== eventId) return;
       setMembers(d.members);
-      setMessages((prev) => [...prev, system(`${d.user.name} присоединился к чату`)]);
+      // быстрый выход и повторный вход (переподключение, повторное открытие) не дублирует строку
+      const text = `${d.user.name} присоединился к чату`;
+      setMessages((prev) => (prev.at(-1)?.text === text ? prev : [...prev, system(text)]));
     };
     const onLeft = (d) => {
       if (d.eventId !== eventId) return;

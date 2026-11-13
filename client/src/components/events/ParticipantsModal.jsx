@@ -20,10 +20,14 @@ export default function ParticipantsModal({ event, onClose }) {
     }
   }
 
+  // отметка посещения или отмена участия организатором (участник получит уведомление)
   async function setStatus(reg, status) {
+    if (status === 'cancelled' && !window.confirm(`Отменить участие: ${reg.user?.name}? Участник получит уведомление.`)) return;
     try {
-      const updated = await registrationsApi.update(reg.id, { status });
-      setData((list) => list.map((r) => (r.id === reg.id ? { ...r, status: updated.status } : r)));
+      const updated = status === 'cancelled'
+        ? await registrationsApi.cancel(reg.id)
+        : await registrationsApi.update(reg.id, { status });
+      setData((list) => list.map((r) => (r.id === reg.id ? { ...r, status: updated.status, cancelledAt: updated.cancelledAt } : r)));
     } catch (err) {
       notify(getErrorMessage(err), 'error');
     }
@@ -52,6 +56,7 @@ export default function ParticipantsModal({ event, onClose }) {
                       <select value={r.status} onChange={(e) => setStatus(r, e.target.value)} aria-label="Статус">
                         <option value="registered">{STATUS_LABELS.registered}</option>
                         <option value="attended">{STATUS_LABELS.attended}</option>
+                        <option value="cancelled">Отменить участие…</option>
                       </select>
                     )}
                   </td>

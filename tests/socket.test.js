@@ -126,6 +126,22 @@ describe('Чат мероприятия', () => {
 });
 
 describe('Права доступа к чату', () => {
+    it('вход из второй вкладки того же пользователя не объявляется в комнате', async () => {
+        const event = await createEvent();
+        const anna = await createUser();
+        const ivan = await createUser();
+        await registerUser(event, anna);
+        await registerUser(event, ivan);
+        const i = await connectAs(ivan);
+        await join(i, event);
+        const announced = [];
+        i.on('room:joined', (d) => announced.push(d.user.id));
+        await join(await connectAs(anna), event);
+        await join(await connectAs(anna), event);
+        await new Promise((r) => setTimeout(r, 100));
+        expect(announced).toEqual([anna.id]);
+    });
+
     it('постороннему и гостю – нет доступа; черновик – только владелец и администратор', async () => {
         const organizer = await createOrganizer();
         const event = await createEvent({ organizerId: organizer.id });

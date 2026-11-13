@@ -84,11 +84,12 @@ function onConnection(io, socket) {
             const { event } = access;
 
             const room = rooms.event(eventId);
-            const alreadyJoined = socket.rooms.has(room);
+            // повторный вход и вход из второй вкладки того же пользователя не объявляются
+            const alreadyPresent = (await roomMembers(io, room)).some((m) => m.id === user.id);
             socket.join(room);
             const [history, members] = await Promise.all([Message.history(eventId), roomMembers(io, room)]);
-            // Остальным участникам комнаты (без отправителя); повторный вход не объявляется
-            if (!alreadyJoined) socket.to(room).emit('room:joined', { eventId, user, members });
+            // Остальным участникам комнаты (без отправителя)
+            if (!alreadyPresent) socket.to(room).emit('room:joined', { eventId, user, members });
             reply(ack, {
                 ok: true,
                 event: { id: String(event.id), title: event.title },

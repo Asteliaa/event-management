@@ -368,7 +368,6 @@ const stats = async (id, user) => {
     const event = await Event.findByPk(id);
     if (!event || (event.status === 'draft' && !canManageEvent(user, event))) throw ApiError.notFound('Мероприятие не найдено');
     assertCanManageEvent(user, event);
-    assertCanManageEvent(user, event);
     const [[totals], timeline] = await Promise.all([
         sequelize.query(
             `SELECT count(*) FILTER (WHERE status <> 'cancelled')::int AS active,

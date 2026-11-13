@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router';
 import {
   ArrowLeft, CalendarDays, CalendarPlus, Heart, Link2, Lock, MapPin, Pencil, Ticket, User, Video,
@@ -9,6 +9,7 @@ import { authApi, eventsApi, registrationsApi } from '../api/index.js';
 import { getErrorMessage } from '../api/client.js';
 import { useAuth } from '../context/AuthContext.jsx';
 import { useNotifications } from '../context/NotificationContext.jsx';
+import { useSocket } from '../context/SocketContext.jsx';
 import EventCover from '../components/events/EventCover.jsx';
 import EventRow, { CategoryMark, DateBlock, SeatsBar } from '../components/events/EventCard.jsx';
 import EventChat from '../components/events/EventChat.jsx';
@@ -18,7 +19,7 @@ import {
   EVENT_STATUS_LABELS, PHASE_LABELS, TYPE_LABELS, formatDate, formatDateTime, formatTime, placeOf, sameOffset, timeUntil,
 } from '../utils/format.js';
 
-function RegistrationPanel({ event, onChange }) {
+function RegistrationPanel({ event, onChange, onReload }) {
   const { isAuthenticated } = useAuth();
   const { notify } = useNotifications();
   const location = useLocation();
@@ -39,6 +40,8 @@ function RegistrationPanel({ event, onChange }) {
         myReminders: autoReminder ? [...e.myReminders.filter((r) => r.id !== autoReminder.id), autoReminder] : e.myReminders,
       }));
       notify('Вы зарегистрированы! Мы напомним о начале.', 'success');
+      // карточка запрашивается заново: участнику открывается ссылка подключения
+      onReload();
     } catch (err) {
       notify(getErrorMessage(err), 'error');
     } finally {
@@ -58,6 +61,7 @@ function RegistrationPanel({ event, onChange }) {
         myReminders: e.myReminders.filter((r) => r.status === 'sent'),
       }));
       notify('Регистрация отменена', 'info');
+      onReload();
     } catch (err) {
       notify(getErrorMessage(err), 'error');
     } finally {
@@ -217,6 +221,23 @@ export default function EventPage() {
   const { notify } = useNotifications();
   const { data: event, loading, error, reload, setData } = useFetch((signal) => eventsApi.get(id, signal), [id, user?.id]);
   const { data: similar } = useFetch(() => eventsApi.similar(id), [id]);
+  const { socket } = useSocket();
+
+  // Изменения мероприятия в реальном времени: перенос, отмена, снятие с публикации, места, отмена участия.
+  // В событиях нет персональных данных и ссылки подключения, поэтому карточка запрашивается заново
+  useEffect(() => {
+    if (!socket) return undefined;
+    const same = (eventId) => String(eventId) === String(id);
+    const handlers = {
+      'event:updated': ({ event: e }) => same(e.id) && reload(),
+      'event:deleted': ({ id: eventId }) => same(eventId) && reload(),
+      'registration:created': ({ eventId }) => same(eventId) && reload(),
+      'registration:cancelled': ({ eventId }) => same(eventId) && reload(),
+      'chat:revoked': ({ eventId }) => same(eventId) && reload(),
+    };
+    Object.entries(handlers).forEach(([name, fn]) => socket.on(name, fn));
+    return () => Object.entries(handlers).forEach(([name, fn]) => socket.off(name, fn));
+  }, [socket, id, reload]);
   useDocumentTitle(event?.title || 'Мероприятие');
 
   async function toggleFavorite() {
@@ -316,7 +337,7 @@ export default function EventPage() {
 
         <aside className="event-page__aside">
           {canManage && <ManagePanel event={event} onChange={setData} />}
-          <RegistrationPanel event={event} onChange={setData} />
+          <RegistrationPanel event={event} onChange={setData} onReload={reload} />
           {isAuthenticated && event.myRegistration && event.status === 'published' && (
             <ReminderPanel
               event={event}

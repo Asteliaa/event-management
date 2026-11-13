@@ -1,13 +1,19 @@
 openapi: 3.0.3
 info:
   title: EventHub API
-  version: 1.0.0
+  version: 2.0.0
   description: |
     REST API веб-приложения для организации конференций, вебинаров и встреч
     с регистрацией участников и напоминаниями (курсовая работа, тема №11).
 
     Все ответы с ошибкой имеют единый формат `{ "error": { "status", "code", "message", "details" } }`.
     Списки с пагинацией возвращают `{ "data": [...], "meta": { "page", "limit", "total", "pages" } }`.
+
+    Роли: участник (user), организатор (organizer – управляет своими мероприятиями), администратор (admin).
+    Ссылка подключения онлайн-мероприятия (`location.url`) возвращается только активному участнику
+    опубликованного мероприятия, организатору-владельцу и администратору.
+    JWT содержит версию токенов (`tv`): после блокировки, деактивации, удаления, смены роли или пароля
+    ранее выданные токены отклоняются с кодом 401.
 servers:
   - url: /api/v1
 tags:
@@ -17,8 +23,12 @@ tags:
     description: Каталог мероприятий
   - name: Registrations
     description: Регистрации на мероприятия
+  - name: Organizer
+    description: Управление мероприятиями (организатор-владелец и администратор)
   - name: Reminders
     description: Напоминания о мероприятиях
+  - name: Notifications
+    description: История уведомлений
   - name: Categories
     description: Категории мероприятий
   - name: Admin
@@ -73,16 +83,31 @@ components:
       properties:
         id: { type: string }
         name: { type: string, example: Анна Петрова }
-        email: { type: string, example: anna@events.local }
-        role: { type: string, enum: [user, admin] }
+        email: { type: string, nullable: true, example: anna@demo.eventhub.local, description: пустой у удаленного (обезличенного) аккаунта }
+        role: { type: string, enum: [user, organizer, admin] }
         city: { type: string, example: Минск }
         blocked: { type: boolean }
+        blockedAt: { type: string, format: date-time }
+        status: { type: string, enum: [active, deactivated, deleted] }
+        deactivatedAt: { type: string, format: date-time }
+        deactivatedBy: { type: string, enum: [user, admin] }
+        deletedAt: { type: string, format: date-time }
         createdAt: { type: string, format: date-time }
+    UserPage:
+      type: object
+      properties:
+        data: { type: array, items: { $ref: '#/components/schemas/User' } }
+        meta: { $ref: '#/components/schemas/Meta' }
     AuthResult:
       type: object
       properties:
         user: { $ref: '#/components/schemas/User' }
         token: { type: string, example: eyJhbGciOiJIUzI1NiIs... }
+    PasswordConfirm:
+      type: object
+      required: [password]
+      properties:
+        password: { type: string, description: текущий пароль для подтверждения }
     Category:
       type: object
       properties:
@@ -105,7 +130,7 @@ components:
         city: { type: string, example: Минск }
         venue: { type: string, example: Конгресс-холл }
         online: { type: boolean, example: false }
-        url: { type: string, example: https://meet.example.com/abc }
+        url: { type: string, example: https://meet.example.com/abc, description: только для участников и организатора }
     Event:
       type: object
       properties:
@@ -113,12 +138,22 @@ components:
         title: { type: string, example: Конференция разработчиков 2026 }
         description: { type: string }
         type: { type: string, enum: [conference, webinar, meeting] }
-        status: { type: string, enum: [published, cancelled] }
+        status: { type: string, enum: [draft, published, cancelled] }
+        timezone: { type: string, example: Europe/Minsk, description: IANA-пояс мероприятия }
         category: { $ref: '#/components/schemas/Category' }
-        startsAt: { type: string, format: date-time }
-        endsAt: { type: string, format: date-time }
+        organizer: { type: object, properties: { id: { type: string }, name: { type: string } } }
+        startsAt: { type: string, format: date-time, nullable: true }
+        endsAt: { type: string, format: date-time, nullable: true }
+        registrationOpen: { type: boolean }
+        registrationDeadline: { type: string, format: date-time, nullable: true }
+        registrationAvailable: { type: boolean, description: можно ли зарегистрироваться сейчас }
+        scheduleVersion: { type: integer, example: 1, description: увеличивается при каждом переносе }
+        publishedAt: { type: string, format: date-time }
+        cancelledAt: { type: string, format: date-time }
+        cancelReason: { type: string }
+        phase: { type: string, enum: [upcoming, live, finished] }
         coverUrl: { type: string }
-        capacity: { type: integer, example: 300 }
+        capacity: { type: integer, nullable: true, example: 300 }
         seatsTaken: { type: integer, example: 120 }
         seatsLeft: { type: integer, nullable: true, example: 180 }
         isPast: { type: boolean }
@@ -130,20 +165,26 @@ components:
         - type: object
           description: Поля для авторизованного пользователя
           properties:
+            canManage: { type: boolean, description: владелец или администратор }
             myRegistration: { $ref: '#/components/schemas/Registration' }
             myReminders: { type: array, items: { $ref: '#/components/schemas/Reminder' } }
             isFavorite: { type: boolean }
     EventInput:
       type: object
-      required: [title, type, startsAt]
+      description: Черновик может быть неполным; для публикации нужны даты, часовой пояс и место (город или ссылка)
+      required: [title, type, timezone]
       properties:
         title: { type: string, example: Вебинар по React 19 }
         description: { type: string }
         type: { type: string, enum: [conference, webinar, meeting] }
-        status: { type: string, enum: [published, cancelled] }
+        status: { type: string, enum: [draft, published], description: только при создании; по умолчанию draft }
+        timezone: { type: string, example: Europe/Minsk }
         category: { type: string, nullable: true }
-        startsAt: { type: string, format: date-time, example: '2026-12-15T15:00:00.000Z' }
+        organizer: { type: string, description: передача владельца – только администратор }
+        startsAt: { type: string, format: date-time, nullable: true, example: '2026-12-15T15:00:00.000Z' }
         endsAt: { type: string, format: date-time, nullable: true }
+        registrationOpen: { type: boolean }
+        registrationDeadline: { type: string, format: date-time, nullable: true }
         coverUrl: { type: string }
         capacity: { type: integer, nullable: true, example: 100 }
         location: { $ref: '#/components/schemas/Location' }
@@ -159,21 +200,53 @@ components:
         id: { type: string }
         event: { oneOf: [{ type: string }, { $ref: '#/components/schemas/Event' }] }
         user: { oneOf: [{ type: string }, { $ref: '#/components/schemas/User' }] }
-        tickets: { type: integer, example: 2 }
         status: { type: string, enum: [registered, attended, cancelled] }
+        cancelledAt: { type: string, format: date-time }
+        cancelledBy: { type: string, enum: [user, organizer, admin, system] }
         comment: { type: string }
+        legacyTickets: { type: integer, description: число билетов до перехода на «одна регистрация – одно место» }
         createdAt: { type: string, format: date-time }
     Reminder:
       type: object
       properties:
         id: { type: string }
         event: { oneOf: [{ type: string }, { $ref: '#/components/schemas/Event' }] }
+        registration: { type: string }
         offsetMinutes: { type: integer, example: 1440 }
         remindAt: { type: string, format: date-time }
         kind: { type: string, enum: [auto, custom] }
-        status: { type: string, enum: [pending, sent] }
+        status: { type: string, enum: [pending, sent, cancelled, skipped] }
+        cancelReason: { type: string, example: registration_cancelled }
+        scheduleVersion: { type: integer }
         sentAt: { type: string, format: date-time }
-        readAt: { type: string, format: date-time }
+    Notification:
+      type: object
+      properties:
+        id: { type: string }
+        type: { type: string, enum: [reminder, event_rescheduled, event_location_changed, event_cancelled, registration_cancelled] }
+        event: { oneOf: [{ type: string }, { $ref: '#/components/schemas/Event' }] }
+        registration: { type: string }
+        reminder: { type: string }
+        payload: { type: object, description: подробности без личных данных и без ссылки подключения }
+        readAt: { type: string, format: date-time, nullable: true }
+        createdAt: { type: string, format: date-time }
+    NotificationPage:
+      type: object
+      properties:
+        data: { type: array, items: { $ref: '#/components/schemas/Notification' } }
+        meta:
+          allOf:
+            - $ref: '#/components/schemas/Meta'
+            - type: object
+              properties: { unread: { type: integer } }
+    EventStats:
+      type: object
+      properties:
+        event: { type: object, properties: { id: { type: string }, title: { type: string }, capacity: { type: integer, nullable: true }, seatsTaken: { type: integer } } }
+        registrations: { type: object, properties: { active: { type: integer }, attended: { type: integer }, cancelled: { type: integer }, users: { type: integer } } }
+        fillRate: { type: integer, nullable: true }
+        favorites: { type: integer }
+        timeline: { type: array, items: { type: object, properties: { date: { type: string }, count: { type: integer } } } }
     Stats:
       type: object
       properties:
@@ -182,9 +255,9 @@ components:
           properties:
             events: { type: integer }
             upcoming: { type: integer }
-            users: { type: integer }
+            users: { type: integer, description: без удаленных }
             registrations: { type: integer }
-            tickets: { type: integer }
+            cancelledRegistrations: { type: integer }
             remindersSent: { type: integer }
         byType: { type: array, items: { type: object } }
         byCategory: { type: array, items: { type: object } }
@@ -215,13 +288,13 @@ paths:
                 password: { type: string, example: secret123, description: 'не короче 8 символов, буква и цифра' }
       responses:
         '201': { description: Создан, content: { application/json: { schema: { $ref: '#/components/schemas/AuthResult' } } } }
-        '409': { $ref: '#/components/responses/Error' }
+        '409': { description: Email занят (EMAIL_TAKEN) }
         '422': { $ref: '#/components/responses/Error' }
         '429': { $ref: '#/components/responses/Error' }
   /auth/login:
     post:
       tags: [Auth]
-      summary: Вход, выдача JWT
+      summary: Вход, выдача JWT (вход отменяет деактивацию, выполненную самим пользователем)
       requestBody:
         required: true
         content:
@@ -230,12 +303,12 @@ paths:
               type: object
               required: [email, password]
               properties:
-                email: { type: string, example: admin@events.local }
+                email: { type: string, example: admin@demo.eventhub.local }
                 password: { type: string, example: admin12345 }
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/AuthResult' } } } }
-        '401': { $ref: '#/components/responses/Error' }
-        '403': { $ref: '#/components/responses/Error' }
+        '401': { description: Неверный email или пароль (в том числе удаленный аккаунт) }
+        '403': { description: Аккаунт заблокирован или деактивирован администратором (ACCOUNT_DEACTIVATED) }
         '429': { $ref: '#/components/responses/Error' }
   /auth/me:
     get:
@@ -260,10 +333,32 @@ paths:
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/User' } } } }
         '422': { $ref: '#/components/responses/Error' }
+    delete:
+      tags: [Auth]
+      summary: Удалить свой аккаунт (необратимое обезличивание, см. README)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/PasswordConfirm' } } }
+      responses:
+        '204': { $ref: '#/components/responses/NoContent' }
+        '400': { description: Неверный пароль }
+        '409': { description: Есть будущие опубликованные мероприятия (ORGANIZER_HAS_FUTURE_EVENTS) }
+  /auth/me/deactivate:
+    post:
+      tags: [Auth]
+      summary: Деактивировать свой аккаунт (обратимо входом с паролем)
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content: { application/json: { schema: { $ref: '#/components/schemas/PasswordConfirm' } } }
+      responses:
+        '204': { $ref: '#/components/responses/NoContent' }
+        '400': { description: Неверный пароль }
   /auth/me/password:
     put:
       tags: [Auth]
-      summary: Смена пароля
+      summary: Смена пароля; другие сеансы завершаются, ответ – новый токен
       security: [{ bearerAuth: [] }]
       requestBody:
         content:
@@ -275,15 +370,16 @@ paths:
                 currentPassword: { type: string }
                 newPassword: { type: string }
       responses:
-        '204': { $ref: '#/components/responses/NoContent' }
+        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { token: { type: string } } } } } }
         '400': { $ref: '#/components/responses/Error' }
   /auth/me/registrations:
     get:
       tags: [Auth, Registrations]
-      summary: Мои регистрации
+      summary: Мои регистрации (ссылка подключения – только у активных регистраций на опубликованные мероприятия)
       security: [{ bearerAuth: [] }]
       parameters:
         - { name: when, in: query, schema: { type: string, enum: [all, upcoming, past], default: all } }
+        - { name: status, in: query, schema: { type: string, enum: [active, cancelled, all], default: active } }
       responses:
         '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Registration' } } } } }
   /auth/me/favorites:
@@ -311,7 +407,7 @@ paths:
   /events:
     get:
       tags: [Events]
-      summary: Каталог мероприятий с фильтрами, сортировкой и пагинацией
+      summary: Каталог опубликованных мероприятий с фильтрами, сортировкой и пагинацией
       parameters:
         - { name: search, in: query, schema: { type: string }, description: Поиск по названию, описанию и тегам }
         - { name: type, in: query, schema: { type: string, enum: [conference, webinar, meeting] } }
@@ -329,8 +425,8 @@ paths:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/EventPage' } } } }
         '422': { $ref: '#/components/responses/Error' }
     post:
-      tags: [Events]
-      summary: Создать мероприятие (администратор)
+      tags: [Organizer]
+      summary: Создать мероприятие (организатор, администратор); по умолчанию черновик
       security: [{ bearerAuth: [] }]
       requestBody:
         required: true
@@ -339,57 +435,115 @@ paths:
         '201': { description: Создано, content: { application/json: { schema: { $ref: '#/components/schemas/Event' } } } }
         '401': { $ref: '#/components/responses/Error' }
         '403': { $ref: '#/components/responses/Error' }
-        '422': { $ref: '#/components/responses/Error' }
+        '422': { description: Ошибка валидации или не заполнены поля, обязательные для публикации }
+  /events/managed:
+    get:
+      tags: [Organizer]
+      summary: Мои мероприятия со счетчиками регистраций (администратор с all=true – все)
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: all, in: query, schema: { type: string, enum: ['true', 'false'] } }
+        - { name: status, in: query, schema: { type: string, enum: [draft, published, cancelled] } }
+        - { name: search, in: query, schema: { type: string } }
+        - { name: page, in: query, schema: { type: integer } }
+        - { name: limit, in: query, schema: { type: integer, default: 20 } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/EventPage' } } } }
+        '403': { $ref: '#/components/responses/Error' }
   /events/cities:
     get:
       tags: [Events]
-      summary: Города, в которых проходят мероприятия
+      summary: Города, в которых проходят опубликованные мероприятия
       responses:
         '200': { description: OK, content: { application/json: { schema: { type: array, items: { type: string } } } } }
   /events/{id}:
     parameters: [{ $ref: '#/components/parameters/id' }]
     get:
       tags: [Events]
-      summary: Карточка мероприятия (с токеном – и данные пользователя)
+      summary: Карточка мероприятия (черновик – только владельцу и администратору)
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/EventDetails' } } } }
         '404': { $ref: '#/components/responses/Error' }
     patch:
-      tags: [Events]
-      summary: Изменить мероприятие (администратор)
+      tags: [Organizer]
+      summary: Изменить мероприятие; смена дат – перенос (schedule_version + 1, напоминания пересчитываются, участники уведомляются)
       security: [{ bearerAuth: [] }]
       requestBody:
         content: { application/json: { schema: { $ref: '#/components/schemas/EventInput' } } }
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Event' } } } }
+        '403': { $ref: '#/components/responses/Error' }
         '404': { $ref: '#/components/responses/Error' }
-        '409': { $ref: '#/components/responses/Error' }
+        '409': { description: Мероприятие отменено (EVENT_CANCELLED) или завершено (EVENT_FINISHED), вместимость меньше числа участников (CAPACITY_TOO_SMALL) }
     delete:
-      tags: [Events]
-      summary: Удалить мероприятие с регистрациями, напоминаниями и чатом (администратор)
+      tags: [Organizer]
+      summary: Удалить черновик (опубликованные отменяются, а не удаляются)
       security: [{ bearerAuth: [] }]
       responses:
         '204': { $ref: '#/components/responses/NoContent' }
         '404': { $ref: '#/components/responses/Error' }
+        '409': { description: Мероприятие не черновик (EVENT_NOT_DRAFT) }
+  /events/{id}/publish:
+    parameters: [{ $ref: '#/components/parameters/id' }]
+    post:
+      tags: [Organizer]
+      summary: Опубликовать черновик
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Event' } } } }
+        '409': { $ref: '#/components/responses/Error' }
+        '422': { description: Не заполнены поля, обязательные для публикации }
+  /events/{id}/unpublish:
+    parameters: [{ $ref: '#/components/parameters/id' }]
+    post:
+      tags: [Organizer]
+      summary: Вернуть в черновик (только без регистраций)
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Event' } } } }
+        '409': { description: Есть регистрации (EVENT_HAS_REGISTRATIONS) или мероприятие не опубликовано (EVENT_NOT_PUBLISHED) }
+  /events/{id}/cancel:
+    parameters: [{ $ref: '#/components/parameters/id' }]
+    post:
+      tags: [Organizer]
+      summary: Отменить мероприятие с причиной; напоминания отменяются, участники уведомляются, чат – только чтение
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, properties: { reason: { type: string, maxLength: 500 } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Event' } } } }
+        '409': { $ref: '#/components/responses/Error' }
+  /events/{id}/stats:
+    parameters: [{ $ref: '#/components/parameters/id' }]
+    get:
+      tags: [Organizer]
+      summary: Статистика мероприятия
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/EventStats' } } } }
+        '403': { $ref: '#/components/responses/Error' }
   /events/{id}/similar:
     parameters: [{ $ref: '#/components/parameters/id' }]
     get:
       tags: [Events]
-      summary: Похожие мероприятия
+      summary: Похожие опубликованные мероприятия
       responses:
         '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Event' } } } } }
   /events/{id}/calendar.ics:
     parameters: [{ $ref: '#/components/parameters/id' }]
     get:
       tags: [Events]
-      summary: Файл iCalendar для добавления в календарь
+      summary: Файл iCalendar (без ссылки подключения)
       responses:
         '200': { description: Файл .ics, content: { text/calendar: { schema: { type: string } } } }
+        '409': { description: Дата не назначена (EVENT_NO_DATE) }
   /events/{id}/registrations:
     parameters: [{ $ref: '#/components/parameters/id' }]
     post:
       tags: [Registrations]
-      summary: Зарегистрироваться на мероприятие (создает автоматическое напоминание)
+      summary: Зарегистрироваться (одно место; создается автоматическое напоминание)
       security: [{ bearerAuth: [] }]
       requestBody:
         content:
@@ -397,25 +551,26 @@ paths:
             schema:
               type: object
               properties:
-                tickets: { type: integer, minimum: 1, maximum: 10, default: 1 }
-                comment: { type: string }
+                comment: { type: string, maxLength: 300 }
       responses:
         '201': { description: Создано, content: { application/json: { schema: { $ref: '#/components/schemas/Registration' } } } }
         '404': { $ref: '#/components/responses/Error' }
-        '409': { description: 'Уже зарегистрирован (ALREADY_REGISTERED), нет мест (NO_SEATS), мероприятие прошло (EVENT_PAST) или отменено (EVENT_CANCELLED)' }
+        '409': { description: 'ALREADY_REGISTERED, NO_SEATS, EVENT_PAST, EVENT_CANCELLED, REGISTRATION_CLOSED, REGISTRATION_DEADLINE_PASSED; черновик – 404' }
     get:
-      tags: [Registrations]
-      summary: Участники мероприятия (администратор); format=csv – выгрузка
+      tags: [Organizer]
+      summary: Участники мероприятия с email (владелец, администратор); format=csv – выгрузка
       security: [{ bearerAuth: [] }]
       parameters:
         - { name: format, in: query, schema: { type: string, enum: [json, csv], default: json } }
+        - { name: status, in: query, schema: { type: string, enum: [all, active, registered, attended, cancelled], default: all } }
       responses:
         '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Registration' } } }, text/csv: {} } }
+        '403': { $ref: '#/components/responses/Error' }
   /registrations/{id}:
     parameters: [{ $ref: '#/components/parameters/id' }]
     patch:
       tags: [Registrations]
-      summary: Изменить число билетов, комментарий или статус (attended – только администратор)
+      summary: Комментарий (участник) или отметка посещения (владелец мероприятия, администратор)
       security: [{ bearerAuth: [] }]
       requestBody:
         content:
@@ -423,16 +578,15 @@ paths:
             schema:
               type: object
               properties:
-                tickets: { type: integer }
                 status: { type: string, enum: [registered, attended, cancelled] }
                 comment: { type: string }
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Registration' } } } }
         '403': { $ref: '#/components/responses/Error' }
-        '409': { $ref: '#/components/responses/Error' }
+        '409': { description: Регистрация уже отменена (REGISTRATION_CANCELLED) }
     delete:
       tags: [Registrations]
-      summary: Отменить регистрацию (места освобождаются, напоминания удаляются)
+      summary: Отменить регистрацию (место освобождается, напоминания отменяются, доступ к чату закрывается; при отмене организатором участник получает уведомление)
       security: [{ bearerAuth: [] }]
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Registration' } } } }
@@ -444,13 +598,12 @@ paths:
       summary: Мои напоминания
       security: [{ bearerAuth: [] }]
       parameters:
-        - { name: status, in: query, schema: { type: string, enum: [pending, sent] } }
-        - { name: unread, in: query, schema: { type: string, enum: ['true', 'false'] } }
+        - { name: status, in: query, schema: { type: string, enum: [pending, sent, cancelled, skipped] } }
       responses:
         '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Reminder' } } } } }
     post:
       tags: [Reminders]
-      summary: Создать напоминание
+      summary: Создать напоминание (нужна активная регистрация)
       security: [{ bearerAuth: [] }]
       requestBody:
         required: true
@@ -465,28 +618,17 @@ paths:
       responses:
         '201': { description: Создано, content: { application/json: { schema: { $ref: '#/components/schemas/Reminder' } } } }
         '400': { $ref: '#/components/responses/Error' }
-        '409': { $ref: '#/components/responses/Error' }
-  /reminders/read-all:
-    post:
-      tags: [Reminders]
-      summary: Отметить все уведомления прочитанными
-      security: [{ bearerAuth: [] }]
-      responses:
-        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { updated: { type: integer } } } } } }
+        '409': { description: 'REGISTRATION_REQUIRED, REMINDER_EXISTS, EVENT_CANCELLED' }
   /reminders/{id}:
     parameters: [{ $ref: '#/components/parameters/id' }]
     patch:
       tags: [Reminders]
-      summary: Изменить интервал или отметить прочитанным
+      summary: Изменить интервал
       security: [{ bearerAuth: [] }]
       requestBody:
         content:
           application/json:
-            schema:
-              type: object
-              properties:
-                offsetMinutes: { type: integer }
-                read: { type: boolean }
+            schema: { type: object, properties: { offsetMinutes: { type: integer } } }
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Reminder' } } } }
         '404': { $ref: '#/components/responses/Error' }
@@ -496,6 +638,45 @@ paths:
       security: [{ bearerAuth: [] }]
       responses:
         '204': { $ref: '#/components/responses/NoContent' }
+  /notifications:
+    get:
+      tags: [Notifications]
+      summary: История уведомлений (новые сверху); meta.unread – число непрочитанных
+      security: [{ bearerAuth: [] }]
+      parameters:
+        - { name: unread, in: query, schema: { type: string, enum: ['true', 'false'] } }
+        - { name: page, in: query, schema: { type: integer } }
+        - { name: limit, in: query, schema: { type: integer, default: 20 } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/NotificationPage' } } } }
+  /notifications/unread-count:
+    get:
+      tags: [Notifications]
+      summary: Число непрочитанных
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { unread: { type: integer } } } } } }
+  /notifications/read-all:
+    post:
+      tags: [Notifications]
+      summary: Отметить все прочитанными
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { type: object, properties: { updated: { type: integer } } } } } }
+  /notifications/{id}:
+    parameters: [{ $ref: '#/components/parameters/id' }]
+    patch:
+      tags: [Notifications]
+      summary: Отметить прочитанным или непрочитанным
+      security: [{ bearerAuth: [] }]
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [read], properties: { read: { type: boolean } } }
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Notification' } } } }
+        '404': { $ref: '#/components/responses/Error' }
   /categories:
     get:
       tags: [Categories]
@@ -537,20 +718,21 @@ paths:
   /admin/users:
     get:
       tags: [Admin]
-      summary: Пользователи
+      summary: Пользователи (удаленные – только с status=deleted)
       security: [{ bearerAuth: [] }]
       parameters:
         - { name: search, in: query, schema: { type: string } }
-        - { name: role, in: query, schema: { type: string, enum: [user, admin] } }
+        - { name: role, in: query, schema: { type: string, enum: [user, organizer, admin] } }
+        - { name: status, in: query, schema: { type: string, enum: [active, deactivated, deleted] } }
         - { name: page, in: query, schema: { type: integer } }
         - { name: limit, in: query, schema: { type: integer } }
       responses:
-        '200': { description: OK }
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/UserPage' } } } }
   /admin/users/{id}:
     parameters: [{ $ref: '#/components/parameters/id' }]
     patch:
       tags: [Admin]
-      summary: Изменить роль или заблокировать
+      summary: Изменить роль или заблокировать (себя – нельзя); токены и соединения пользователя завершаются
       security: [{ bearerAuth: [] }]
       requestBody:
         content:
@@ -558,13 +740,34 @@ paths:
             schema:
               type: object
               properties:
-                role: { type: string, enum: [user, admin] }
+                role: { type: string, enum: [user, organizer, admin] }
                 blocked: { type: boolean }
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/User' } } } }
+        '400': { $ref: '#/components/responses/Error' }
     delete:
       tags: [Admin]
-      summary: Удалить пользователя
+      summary: Удалить пользователя (необратимое обезличивание, история сохраняется)
       security: [{ bearerAuth: [] }]
       responses:
         '204': { $ref: '#/components/responses/NoContent' }
+        '400': { description: Нельзя удалить себя }
+        '404': { $ref: '#/components/responses/Error' }
+        '409': { description: Есть будущие опубликованные мероприятия (ORGANIZER_HAS_FUTURE_EVENTS) }
+  /admin/users/{id}/deactivate:
+    parameters: [{ $ref: '#/components/parameters/id' }]
+    post:
+      tags: [Admin]
+      summary: Деактивировать (вернуть может только администратор)
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/User' } } } }
+        '400': { description: Нельзя деактивировать себя }
+  /admin/users/{id}/reactivate:
+    parameters: [{ $ref: '#/components/parameters/id' }]
+    post:
+      tags: [Admin]
+      summary: Вернуть деактивированный аккаунт
+      security: [{ bearerAuth: [] }]
+      responses:
+        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/User' } } } }

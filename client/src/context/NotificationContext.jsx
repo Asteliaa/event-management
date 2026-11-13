@@ -100,7 +100,7 @@ export function NotificationProvider({ children }) {
       dispatch({ type: 'INBOX_READ_ALL' });
       notificationsApi.readAll().catch(() => {});
     },
-  }), [state, notify]);
+  }), [state, notify, loadInbox]);
 
   return <NotificationContext.Provider value={value}>{children}</NotificationContext.Provider>;
 }

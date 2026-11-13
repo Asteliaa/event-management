@@ -2,18 +2,46 @@
 
 Курсовая работа по дисциплине «Интернет-технологии и веб-программирование» (БГУИР), тема №11.
 Полнофункциональное SPA-приложение: React + Node.js/Express + PostgreSQL (Sequelize) + JWT + Socket.IO.
+Вне объема: лист ожидания, QR-билеты, отзывы, оплата, доставка по email.
 
 ## Функциональные модули
 
 | Модуль | Что умеет |
 |---|---|
-| Аутентификация и профиль | Регистрация, вход (JWT), роли user/admin, смена пароля, редактирование профиля, блокировка |
-| Каталог мероприятий | Поиск, фильтры (формат, категория, город, онлайн, даты), сортировка, пагинация, похожие мероприятия |
-| Регистрации | Запись с выбором числа билетов, атомарный учет мест, отмена, изменение, файл календаря `.ics` |
-| Напоминания | Автоматическое за сутки при регистрации, свои напоминания, планировщик на сервере, доставка через Socket.IO, центр уведомлений |
-| Избранное | Добавление мероприятий в избранное |
-| Чат и уведомления | Чат участников мероприятия (Socket.IO, история в PostgreSQL), уведомления в реальном времени |
-| Админ-панель | Статистика и графики, CRUD мероприятий и категорий, пользователи, список участников с выгрузкой CSV |
+| Аутентификация и аккаунт | Регистрация, вход (JWT), роли участник / организатор / администратор, смена пароля (завершает другие сеансы), деактивация и удаление аккаунта с подтверждением паролем |
+| Каталог мероприятий | Только опубликованные мероприятия: поиск, фильтры (формат, категория, город, онлайн, даты), сортировка, пагинация, похожие мероприятия |
+| Жизненный цикл мероприятия | Черновик → опубликовано → отменено (с причиной); перенос с версией расписания; срок и закрытие регистрации; часовой пояс мероприятия |
+| Регистрации | Одна регистрация – одно место, атомарный учет мест, отмена и повторная запись (история сохраняется), отметка посещения, файл календаря `.ics` |
+| Напоминания и уведомления | Автоматическое напоминание за сутки и свои напоминания, пересчет при переносе, история уведомлений с пагинацией и отметками прочтения; Socket.IO только ускоряет доставку |
+| Организатор | Свои мероприятия: создание, редактирование, публикация, отмена, участники с email и выгрузкой CSV, статистика |
+| Чат | Чат участников мероприятия (Socket.IO, история в PostgreSQL); права проверяются на каждом сообщении, после отмены мероприятия – только чтение |
+| Админ-панель | Статистика, все мероприятия, категории, пользователи: роль, блокировка, деактивация, удаление (обезличивание) |
+
+### Роли и права
+
+| Действие | Гость | Участник | Организатор | Администратор |
+|---|---|---|---|---|
+| Каталог и карточка опубликованного мероприятия | да | да | да | да |
+| Регистрация, напоминания, избранное, уведомления | – | да | да | да |
+| Ссылка подключения онлайн-мероприятия | – | при активной регистрации на опубликованное | свои мероприятия | все |
+| Чат мероприятия | – | при активной регистрации (после отмены мероприятия – чтение) | свои мероприятия | все |
+| Создание, публикация, перенос, отмена мероприятия | – | – | свои | все |
+| Участники (с email) и CSV, статистика мероприятия | – | – | свои | все |
+| Отмена чужой регистрации, отметка посещения | – | – | на своих мероприятиях | все |
+| Передача мероприятия другому организатору | – | – | – | да |
+| Категории, пользователи, общая статистика | – | – | – | да |
+
+Права проверяются на сервере (REST и Socket.IO, включая уже открытые соединения); клиент только скрывает недоступные действия.
+
+### Блокировка, деактивация и удаление аккаунта
+
+Это три разных действия:
+
+- **Блокировка** (администратор) – обратима: вход и запросы запрещены, данные не меняются.
+- **Деактивация** (сам пользователь с паролем или администратор) – обратима: данные и регистрации сохраняются, напоминания не отправляются. Деактивацию самим пользователем отменяет вход с паролем, деактивацию администратором – только администратор.
+- **Удаление** (сам пользователь с паролем или администратор) – необратимое обезличивание; строка `users` остается, чтобы история не удалялась каскадом. Очищаются: имя («Удаленный пользователь»), email и город, пароль (заменяется случайным), тексты сообщений в чатах («Сообщение удалено»), комментарии к регистрациям; будущие регистрации отменяются с освобождением мест, ожидающие напоминания отменяются, уведомления и избранное удаляются, черновики без регистраций удаляются. Прошедшие регистрации остаются в статистике без личных данных. Резервные копии БД и журналы внешних систем этим не покрываются. Организатора с будущими опубликованными мероприятиями удалить нельзя (409), пока они не переданы или не отменены.
+
+Во всех трех случаях, а также при смене роли или пароля, увеличивается `token_version`: ранее выданные JWT и открытые Socket.IO-соединения перестают действовать.
 
 ## Технологии
 
@@ -38,11 +66,11 @@ src/
   app.js                  Express: helmet, cors, json, Swagger, /api/v1, обработчик ошибок
   config/                 переменные окружения
   db/                     подключение Sequelize к PostgreSQL, запуск миграций (Umzug)
-  models/                 User, Category, Event, Registration, Reminder, Message, Favorite
+  models/                 User, Category, Event, Registration, Reminder, Notification, Message, Favorite
   validators/             схемы Zod для тела запроса, query и params
   middleware/             auth (JWT, роли), validate, errorHandler, rateLimit
   controllers/            разбор запроса и формирование ответа
-  services/               бизнес-логика (регистрации, напоминания, статистика…)
+  services/               бизнес-логика (регистрации, напоминания, уведомления, аккаунт, доступ к чату…)
   routes/                 маршруты REST API v1
   socket/                 Socket.IO: авторизация, комнаты, чат, уведомления
   jobs/reminderScheduler  отправка наступивших напоминаний
@@ -57,49 +85,71 @@ client/src/
   hooks/                  useFetch, useDebounce, useDocumentTitle
   routes/                 ProtectedRoute, GuestRoute
   components/             layout, ui, events
-  pages/                  страницы, pages/admin – админ-панель (lazy)
+  pages/                  страницы, pages/organizer – кабинет организатора, pages/admin – админ-панель (lazy)
   styles/                 токены, база, компоненты, страницы
 ```
 
-### Модель данных (PostgreSQL, 7 таблиц)
+### Модель данных (PostgreSQL, 8 таблиц)
 
-Схема создается миграциями (`migrations/`). Первичные ключи — `bigint` (identity), в API, Socket.IO и клиенте передаются строками (`"42"`). Моменты времени — `timestamptz`, теги — `text[]`.
+Схема создается миграциями (`migrations/`), диаграмма связей – [docs/er.md](docs/er.md). Первичные ключи – `bigint` (identity), в API, Socket.IO и клиенте передаются строками (`"42"`). Моменты времени – `timestamptz`, теги – `text[]`.
 
-- **users** — name, email (уникальный, в нижнем регистре), password_hash, role (user/admin), city, blocked
-- **categories** — name (уникальное), slug (уникальный), color, description
-- **events** — title, description, type, status (published/cancelled), category_id → categories, organizer_id → users, starts_at, ends_at, capacity, seats_taken, location_city, location_venue, location_online, location_url, tags; ограничения: `0 ≤ seats_taken ≤ capacity`, окончание позже начала
-- **registrations** — event_id → events, user_id → users, tickets (1–10), status (registered/attended/cancelled), comment; уникальная пара (event_id, user_id)
-- **reminders** — user_id → users, event_id → events, offset_minutes, remind_at, kind (auto/custom), status (pending/sent), sent_at, read_at; уникальная тройка (user_id, event_id, offset_minutes)
-- **messages** — event_id → events, user_id → users (при удалении пользователя — NULL), author, text
-- **favorites** — user_id → users, event_id → events (составной первичный ключ)
+- **users** – name, email (уникальный, в нижнем регистре; пустой только у удаленных), password_hash, role (user/organizer/admin), city, blocked + blocked_at, status (active/deactivated/deleted), deactivated_at/by, deleted_at, token_version
+- **categories** – name (уникальное), slug (уникальный), color, description
+- **events** – title, description, type, status (draft/published/cancelled), timezone (IANA), category_id → categories, organizer_id → users, starts_at, ends_at (обязательны для опубликованных), capacity, seats_taken, registration_open, registration_deadline (не позже начала), schedule_version, published_at, cancelled_at, cancel_reason, location_city/venue/online/url, tags
+- **registrations** – event_id → events, user_id → users, status (registered/attended/cancelled), cancelled_at, cancelled_by (user/organizer/admin/system), comment, legacy_tickets (число билетов до перехода на «одна регистрация – одно место»); у пользователя не больше одной активной регистрации на мероприятие (частичный уникальный индекс), отмененные хранятся в истории
+- **reminders** – registration_id → registrations, user_id, event_id, offset_minutes, remind_at, kind (auto/custom), status (pending/sent/cancelled/skipped), cancel_reason, schedule_version, sent_at
+- **notifications** – user_id → users, type (reminder, event_rescheduled, event_location_changed, event_cancelled, registration_cancelled), event_id, registration_id, reminder_id, payload (jsonb, без личных данных и ссылки подключения), dedup_key (уникален вместе с user_id), read_at
+- **messages** – event_id → events, user_id → users, author, text, deleted_at
+- **favorites** – user_id → users, event_id → events (составной первичный ключ)
 
-Счетчик `seats_taken` меняется только в транзакциях вместе с регистрацией, отменой и изменением числа билетов; при удалении мероприятия или пользователя связанные записи удаляет БД (`ON DELETE CASCADE`).
+Счетчик `seats_taken` меняется только в транзакциях вместе с регистрацией и отменой. Уведомления пишутся в БД в той же транзакции, что и изменение (отметка «отправлено» у напоминания, перенос, отмена), и рассылаются через Socket.IO после фиксации; повтор исключает ключ `(user_id, dedup_key)`. Пользователи не удаляются физически (обезличивание), поэтому каскадное удаление истории не происходит.
 
 ### REST API v1
 
-Полная документация: `http://localhost:3000/api/docs`. Ошибки — единый формат `{ "error": { status, code, message, details } }`.
+Полная документация: `http://localhost:3000/api/docs` (`docs/openapi.yaml`). Ошибки – единый формат `{ "error": { status, code, message, details } }`.
 
 | Метод | URL | Описание | Доступ |
 |---|---|---|---|
-| POST | /auth/register | Регистрация | все |
-| POST | /auth/login | Вход, JWT | все |
+| POST | /auth/register, /auth/login | Регистрация, вход (JWT) | все |
 | GET / PATCH | /auth/me | Профиль | пользователь |
-| PUT | /auth/me/password | Смена пароля | пользователь |
-| GET | /auth/me/registrations | Мои регистрации | пользователь |
+| PUT | /auth/me/password | Смена пароля, ответ – новый токен | пользователь |
+| POST | /auth/me/deactivate | Деактивация (пароль) | пользователь |
+| DELETE | /auth/me | Удаление с обезличиванием (пароль) | пользователь |
+| GET | /auth/me/registrations | Мои регистрации (`when`, `status`) | пользователь |
 | GET, PUT, DELETE | /auth/me/favorites[/:id] | Избранное | пользователь |
-| GET | /events | Каталог (фильтры, сортировка, пагинация) | все |
-| GET | /events/:id | Карточка мероприятия | все |
-| GET | /events/:id/similar, /events/:id/calendar.ics, /events/cities | Похожие, календарь, города | все |
-| POST / PATCH / DELETE | /events[/:id] | Управление мероприятиями | админ |
+| GET | /events, /events/:id | Каталог (опубликованные), карточка | все |
+| GET | /events/:id/similar, /events/:id/calendar.ics, /events/cities | Похожие, календарь (без ссылки подключения), города | все |
+| GET | /events/managed | Мои мероприятия (администратор с `all=true` – все) | организатор, админ |
+| POST | /events | Создание (черновик по умолчанию) | организатор, админ |
+| PATCH / DELETE | /events/:id | Изменение, перенос; удаление только черновика | владелец, админ |
+| POST | /events/:id/publish, /unpublish, /cancel | Публикация, снятие (без регистраций), отмена с причиной | владелец, админ |
+| GET | /events/:id/stats | Статистика мероприятия | владелец, админ |
 | POST | /events/:id/registrations | Регистрация на мероприятие | пользователь |
-| GET | /events/:id/registrations[?format=csv] | Участники | админ |
-| PATCH / DELETE | /registrations/:id | Изменить / отменить регистрацию | владелец, админ |
+| GET | /events/:id/registrations[?format=csv] | Участники с email | владелец, админ |
+| PATCH / DELETE | /registrations/:id | Комментарий / отметка посещения; отмена | участник, владелец мероприятия, админ |
 | GET / POST | /reminders | Мои напоминания | пользователь |
-| PATCH / DELETE | /reminders/:id, POST /reminders/read-all | Изменить, удалить, прочитать | пользователь |
+| PATCH / DELETE | /reminders/:id | Изменить, удалить | пользователь |
+| GET | /notifications, /notifications/unread-count | История уведомлений, число непрочитанных | пользователь |
+| PATCH / POST | /notifications/:id, /notifications/read-all | Отметка прочтения | пользователь |
 | GET | /categories | Категории | все |
 | POST / PATCH / DELETE | /categories[/:id] | Управление категориями | админ |
 | GET | /admin/stats | Статистика | админ |
-| GET / PATCH / DELETE | /admin/users[/:id] | Пользователи | админ |
+| GET / PATCH | /admin/users[/:id] | Пользователи (`status`), роль и блокировка | админ |
+| POST | /admin/users/:id/deactivate, /reactivate | Деактивация и возврат | админ |
+| DELETE | /admin/users/:id | Удаление с обезличиванием | админ |
+
+### События Socket.IO
+
+Подключение – с JWT в `auth.token`; токен проверяется вместе с `token_version` и состоянием аккаунта.
+
+| Событие | Направление | Назначение |
+|---|---|---|
+| `event:join`, `event:leave` | клиент → сервер | Вход в чат (ответ: история, участники, `readOnly`) |
+| `chat:message`, `chat:typing` | оба | Сообщение и индикатор набора; права проверяются на каждом сообщении |
+| `chat:revoked`, `chat:readonly` | сервер → клиент | Доступ к чату закрыт (отмена участия, передача мероприятия); чат только для чтения (отмена мероприятия) |
+| `notification:new` | сервер → клиент | Новое уведомление из истории (личная комната пользователя) |
+| `event:created`, `event:updated`, `event:deleted` | сервер → все | Изменения каталога (без ссылки подключения) |
+| `registration:created`, `registration:cancelled` | сервер → комната мероприятия и организаторы | Изменение числа участников |
 
 ## Запуск
 
@@ -139,7 +189,7 @@ npm run dev                       # клиент http://localhost:5173
 
 Сервер не запускается, если в базе применены не все миграции, и подсказывает команду `npm run db:migrate`.
 
-Демо-учетные записи после `npm run seed` (данные вымышленные, домен `demo.eventhub.local`): `admin@demo.eventhub.local / admin12345` (администратор), `anna@demo.eventhub.local / user12345`, `ivan@demo.eventhub.local / user12345`, `olga@demo.eventhub.local / user12345`.
+Демо-учетные записи после `npm run seed` (данные вымышленные, домен `demo.eventhub.local`): `admin@demo.eventhub.local / admin12345` (администратор), `organizer@demo.eventhub.local / user12345` (организатор), `anna@demo.eventhub.local / user12345`, `ivan@demo.eventhub.local / user12345`, `olga@demo.eventhub.local / user12345`.
 
 ### Тесты
 

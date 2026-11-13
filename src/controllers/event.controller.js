@@ -11,27 +11,55 @@ const cities = async (req, res) => res.json(await eventService.cities());
 const getById = async (req, res) => res.json(await eventService.getById(req.params.id, req.user));
 const similar = async (req, res) => res.json(await eventService.similar(req.params.id));
 
+// Рассылка всем подключенным: только видимые в каталоге мероприятия и без ссылки подключения
+const publicPayload = (event) => {
+    const json = event.toJSON();
+    if (json.location) json.location = { ...json.location, url: undefined };
+    return json;
+};
+const broadcast = (name, event, by) => {
+    if (event.status !== 'draft') notify.toAll(name, { event: publicPayload(event), by });
+};
+
 const create = async (req, res) => {
     const event = await eventService.create(req.body, req.user);
-    notify.toAll('event:created', { event: event.toJSON(), by: req.user.name });
+    broadcast('event:created', event, req.user.name);
     res.status(201).location(`/api/v1/events/${event.id}`).json(event);
 };
 
 const update = async (req, res) => {
     const event = await eventService.update(req.params.id, req.body, req.user);
-    notify.toAll('event:updated', { event: event.toJSON(), by: req.user.name });
+    broadcast('event:updated', event, req.user.name);
+    res.json(event);
+};
+
+const publish = async (req, res) => {
+    const event = await eventService.publish(req.params.id, req.user);
+    broadcast('event:created', event, req.user.name);
+    res.json(event);
+};
+
+const unpublish = async (req, res) => {
+    const event = await eventService.unpublish(req.params.id, req.user);
+    notify.toAll('event:deleted', { id: String(event.id), title: event.title, by: req.user.name });
+    res.json(event);
+};
+
+const cancel = async (req, res) => {
+    const event = await eventService.cancel(req.params.id, req.user, req.body);
+    broadcast('event:updated', event, req.user.name);
     res.json(event);
 };
 
 const remove = async (req, res) => {
-    const event = await eventService.remove(req.params.id, req.user);
-    notify.toAll('event:deleted', { id: event.id, title: event.title, by: req.user.name });
+    await eventService.remove(req.params.id, req.user);
+    // удаляются только черновики – в каталоге их не было, рассылка не нужна
     res.status(204).send();
 };
 
 // GET /events/:id/calendar.ics – файл для добавления в календарь
 const calendar = async (req, res) => {
-    const event = await eventService.findOrFail(req.params.id);
+    const event = await eventService.findOrFail(req.params.id, req.user);
     res.type('text/calendar; charset=utf-8')
         .attachment(`event-${event.id}.ics`)
         .send(eventToIcs(event.toJSON()));
@@ -64,4 +92,6 @@ const registrations = async (req, res) => {
 const managed = async (req, res) => res.json(await eventService.listManaged(req.user, req.valid.query));
 const stats = async (req, res) => res.json(await eventService.stats(req.params.id, req.user));
 
-module.exports = { list, cities, getById, similar, create, update, remove, calendar, register, registrations, managed, stats };
+module.exports = {
+    list, cities, getById, similar, create, update, publish, unpublish, cancel, remove, calendar, register, registrations, managed, stats
+};

@@ -8,7 +8,7 @@ process.env.DATABASE_URL = process.env.TEST_DATABASE_URL;
 const { sequelize, User, Event, Category } = require('../src/models');
 const { signToken } = require('../src/services/auth.service');
 
-const TABLES = ['favorites', 'messages', 'reminders', 'registrations', 'events', 'categories', 'users'];
+const TABLES = ['notifications', 'favorites', 'messages', 'reminders', 'registrations', 'events', 'categories', 'users'];
 
 // Тестовая база PostgreSQL (tests/globalSetup.js): после каждого теста таблицы очищаются
 const useTestDB = () => {
@@ -39,14 +39,23 @@ const createOrganizer = (data = {}) => createUser({ role: 'organizer', ...data }
 const inDays = (days) => new Date(Date.now() + days * 864e5);
 
 // Поля как в API: category – id категории, location – вложенный объект
-const eventAttributes = ({ category, location, ...data }) => ({
+const eventAttributes = ({ category, location, ...data }) => {
+    const startsAt = data.startsAt === undefined ? inDays(7) : data.startsAt;
+    return {
     title: 'Тестовое мероприятие',
     type: 'webinar',
-    startsAt: inDays(7),
+    // по умолчанию – опубликованное очное мероприятие (минимум, нужный для публикации)
+    status: 'published',
+    timezone: 'Europe/Minsk',
+    startsAt,
+    endsAt: startsAt && new Date(startsAt.getTime() + 2 * 3600e3),
+    locationCity: 'Минск',
+    ...(data.status === 'cancelled' && { cancelledAt: new Date() }),
     ...(category !== undefined && { categoryId: category }),
     ...(location !== undefined && Event.locationToColumns(location)),
     ...data
-});
+    };
+};
 
 const createEvent = (data = {}) => Event.create(eventAttributes(data));
 const createEvents = (list) => Promise.all(list.map(createEvent));

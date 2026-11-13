@@ -13,8 +13,10 @@ import EventCover from '../components/events/EventCover.jsx';
 import EventRow, { CategoryMark, DateBlock, SeatsBar } from '../components/events/EventCard.jsx';
 import EventChat from '../components/events/EventChat.jsx';
 import ReminderPanel from '../components/events/ReminderPanel.jsx';
-import { ConfirmDialog, ErrorState, Spinner } from '../components/ui/index.jsx';
-import { TYPE_LABELS, formatDate, formatTime, placeOf, timeUntil } from '../utils/format.js';
+import { ConfirmDialog, ErrorState, Field, Modal, Spinner } from '../components/ui/index.jsx';
+import {
+  EVENT_STATUS_LABELS, PHASE_LABELS, TYPE_LABELS, formatDate, formatDateTime, formatTime, placeOf, sameOffset, timeUntil,
+} from '../utils/format.js';
 
 function RegistrationPanel({ event, onChange }) {
   const { isAuthenticated } = useAuth();
@@ -64,9 +66,14 @@ function RegistrationPanel({ event, onChange }) {
     }
   }
 
+  // Состояния: публикация (черновик / отменено), фаза (идет / завершено), доступность записи (закрыта / срок / мест нет)
+  const deadlinePassed = event.registrationDeadline && new Date(event.registrationDeadline) <= new Date();
   let body;
-  if (event.status === 'cancelled') body = <p className="notice notice--danger">Мероприятие отменено организатором.</p>;
-  else if (event.isPast) body = <p className="notice">Мероприятие уже прошло.{reg && ' Спасибо за участие!'}</p>;
+  if (event.status === 'draft') body = <p className="notice">Черновик: регистрация откроется после публикации.</p>;
+  else if (event.status === 'cancelled') {
+    body = <p className="notice notice--danger">Мероприятие отменено.{event.cancelReason && ` Причина: ${event.cancelReason}`}</p>;
+  } else if (event.phase === 'finished') body = <p className="notice">Мероприятие завершено.{reg && ' Спасибо за участие!'}</p>;
+  else if (event.phase === 'live') body = <p className="notice notice--success">Мероприятие идет сейчас.{reg ? ' Вы зарегистрированы.' : ' Регистрация закрыта.'}</p>;
   else if (!isAuthenticated) {
     body = (
       <>
@@ -81,11 +88,16 @@ function RegistrationPanel({ event, onChange }) {
         <button type="button" className="btn btn--ghost btn--block" onClick={() => setConfirm(true)} disabled={busy}>Отменить регистрацию</button>
       </>
     );
-  } else if (event.seatsLeft === 0) body = <p className="notice notice--danger">Все места заняты.</p>;
+  } else if (!event.registrationOpen) body = <p className="notice">Регистрация закрыта организатором.</p>;
+  else if (deadlinePassed) body = <p className="notice">Срок регистрации истек.</p>;
+  else if (event.seatsLeft === 0) body = <p className="notice notice--danger">Все места заняты.</p>;
   else {
     body = (
       <>
-        <p className="muted small">Одна регистрация – одно место.</p>
+        <p className="muted small">
+          Одна регистрация – одно место.
+          {event.registrationDeadline && ` Регистрация до ${formatDateTime(event.registrationDeadline, event.timezone)}.`}
+        </p>
         <button type="button" className="btn btn--primary btn--block btn--lg" onClick={register} disabled={busy}>
           {busy ? 'Регистрируем…' : 'Зарегистрироваться'}
         </button>
@@ -97,19 +109,101 @@ function RegistrationPanel({ event, onChange }) {
     <section className="card ticket">
       <div className="ticket__top">
         <p className="ticket__label">Регистрация</p>
-        <p className="ticket__countdown">{event.isPast ? 'Мероприятие завершено' : `Начнется ${timeUntil(event.startsAt)}`}</p>
+        <p className="ticket__countdown">
+          {event.status === 'cancelled' ? 'Отменено' : !event.startsAt ? 'Дата не назначена'
+            : event.phase === 'upcoming' ? `Начнется ${timeUntil(event.startsAt)}` : PHASE_LABELS[event.phase]}
+        </p>
         <SeatsBar event={event} />
       </div>
       <div className="ticket__stub">{body}</div>
       {confirm && (
         <ConfirmDialog
           title="Отменить регистрацию?"
-          text="Места освободятся для других участников, напоминания будут удалены."
+          text="Место освободится для других участников, напоминания будут отменены. Записаться снова можно, пока регистрация открыта и есть места."
           confirmLabel="Отменить регистрацию"
           danger
           busy={busy}
           onConfirm={cancel}
           onCancel={() => setConfirm(false)}
+        />
+      )}
+    </section>
+  );
+}
+
+// Действия организатора-владельца и администратора с состоянием мероприятия (права проверяет сервер)
+function ManagePanel({ event, onChange }) {
+  const { isAdmin } = useAuth();
+  const { notify } = useNotifications();
+  const navigate = useNavigate();
+  const [busy, setBusy] = useState(false);
+  const [dialog, setDialog] = useState(null);
+  const [reason, setReason] = useState('');
+
+  async function run(action, message) {
+    setBusy(true);
+    try {
+      if (action === 'remove') {
+        await eventsApi.remove(event.id);
+        notify(message, 'success');
+        navigate(isAdmin ? '/admin/events' : '/organizer');
+        return;
+      }
+      const updated = action === 'cancel' ? await eventsApi.cancel(event.id, reason) : await eventsApi[action](event.id);
+      onChange((e) => ({ ...e, ...updated }));
+      notify(message, 'success');
+    } catch (err) {
+      notify(getErrorMessage(err), 'error');
+    } finally {
+      setBusy(false);
+      setDialog(null);
+    }
+  }
+
+  return (
+    <section className="card panel stack">
+      <p className="ticket__label">Управление</p>
+      <p>Статус: <b>{EVENT_STATUS_LABELS[event.status]}</b>{event.phase && event.status === 'published' && `, ${PHASE_LABELS[event.phase].toLowerCase()}`}</p>
+      {event.status === 'draft' && (
+        <>
+          <button type="button" className="btn btn--primary btn--block" disabled={busy} onClick={() => run('publish', 'Мероприятие опубликовано')}>Опубликовать</button>
+          <button type="button" className="btn btn--ghost btn--block" disabled={busy} onClick={() => setDialog('remove')}>Удалить черновик</button>
+        </>
+      )}
+      {event.status === 'published' && (
+        <>
+          {event.seatsTaken === 0 && (
+            <button type="button" className="btn btn--soft btn--block" disabled={busy} onClick={() => run('unpublish', 'Мероприятие снято с публикации')}>Снять с публикации</button>
+          )}
+          {event.phase !== 'finished' && (
+            <button type="button" className="btn btn--ghost btn--block" disabled={busy} onClick={() => setDialog('cancel')}>Отменить мероприятие</button>
+          )}
+        </>
+      )}
+      {dialog === 'cancel' && (
+        <Modal
+          title="Отменить мероприятие?"
+          onClose={() => setDialog(null)}
+          footer={(
+            <>
+              <button type="button" className="btn btn--ghost" onClick={() => setDialog(null)}>Не отменять</button>
+              <button type="button" className="btn btn--danger" disabled={busy} onClick={() => run('cancel', 'Мероприятие отменено')}>Отменить мероприятие</button>
+            </>
+          )}
+        >
+          <p>Участники получат уведомление, напоминания будут отменены. История регистраций и чат сохранятся. Отмену нельзя вернуть.</p>
+          <Field label="Причина (увидят участники)"><textarea rows={3} maxLength={500} value={reason} onChange={(e) => setReason(e.target.value)} /></Field>
+        </Modal>
+      )}
+      {dialog === 'remove' && (
+        <ConfirmDialog
+          title="Удалить черновик?"
+          text={`«${event.title}» будет удален. Действие нельзя отменить.`}
+          confirmLabel="Удалить"
+          danger
+          busy={busy}
+          onConfirm={() => run('remove', 'Черновик удален')}
+          onCancel={() => setDialog(null)}
         />
       )}
     </section>
@@ -149,8 +243,9 @@ export default function EventPage() {
   if (loading && !event) return <div className="container page"><Spinner /></div>;
   if (error) return <div className="container page"><ErrorState message={error} onRetry={reload} /></div>;
 
-  // управлять мероприятием может администратор или организатор-владелец (окончательно права проверяет сервер)
-  const canManage = isAdmin || (user?.role === 'organizer' && String(event.organizer?.id ?? event.organizer) === String(user.id));
+  // признак рассчитывает сервер (администратор или организатор-владелец); права действий проверяются там же
+  const { canManage } = event;
+  const tz = event.timezone;
   const canChat = isAuthenticated && (event.myRegistration || canManage);
 
   return (
@@ -158,18 +253,26 @@ export default function EventPage() {
       <button type="button" className="back-link" onClick={() => navigate(-1)}><ArrowLeft size={16} /> Назад</button>
 
       <header className="event-head card">
-        <DateBlock date={event.startsAt} size="lg" />
+        <DateBlock date={event.startsAt} tz={tz} size="lg" />
         <div className="event-head__text">
           <p className="event-row__kicker">
             <span className={`type type--${event.type}`}>{TYPE_LABELS[event.type]}</span>
             <CategoryMark category={event.category} />
             {event.status === 'cancelled' && <span className="flag flag--danger">Отменено</span>}
+            {event.status === 'draft' && <span className="flag">Черновик</span>}
+            {event.status === 'published' && event.phase === 'live' && <span className="flag">Идет сейчас</span>}
           </p>
           <h1 className="event-head__title">{event.title}</h1>
           <ul className="event-meta">
             <li>
               <CalendarDays size={16} />
-              <span>{formatDate(event.startsAt)}, {formatTime(event.startsAt)}{event.endsAt && `–${formatTime(event.endsAt)}`}</span>
+              {event.startsAt ? (
+                <span>
+                  {formatDate(event.startsAt, tz)}, {formatTime(event.startsAt, tz)}{event.endsAt && `–${formatTime(event.endsAt, tz)}`}
+                  <small className="muted"> ({tz})</small>
+                  {!sameOffset(event.startsAt, tz) && <small className="muted"> · по вашему времени {formatDateTime(event.startsAt)}</small>}
+                </span>
+              ) : <span>Дата не назначена</span>}
             </li>
             <li>{event.location?.online ? <Video size={16} /> : <MapPin size={16} />}<span>{placeOf(event)}</span></li>
             <li><User size={16} /><span>{event.organizer?.name || 'EventHub'}</span></li>
@@ -195,7 +298,7 @@ export default function EventPage() {
           <section className="card prose">
             <h2>О мероприятии</h2>
             {(event.description || 'Организатор пока не добавил описание.').split('\n').map((p, i) => <p key={i}>{p}</p>)}
-            {event.location?.online && event.location.url && event.myRegistration && (
+            {event.location?.online && event.location.url && (event.myRegistration || canManage) && (
               <p className="notice"><Video size={16} /> Трансляция: <a href={event.location.url} target="_blank" rel="noreferrer">{event.location.url}</a></p>
             )}
             {event.tags?.length > 0 && (
@@ -206,14 +309,15 @@ export default function EventPage() {
           </section>
 
           {canChat && <EventChat eventId={event.id} />}
-          {isAuthenticated && !canChat && !event.isPast && (
+          {isAuthenticated && !canChat && event.phase !== 'finished' && event.status !== 'draft' && (
             <p className="card hint-box"><Lock size={18} /> Чат участников откроется после регистрации.</p>
           )}
         </article>
 
         <aside className="event-page__aside">
+          {canManage && <ManagePanel event={event} onChange={setData} />}
           <RegistrationPanel event={event} onChange={setData} />
-          {isAuthenticated && (
+          {isAuthenticated && event.myRegistration && event.status === 'published' && (
             <ReminderPanel
               event={event}
               reminders={event.myReminders || []}

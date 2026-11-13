@@ -2,6 +2,7 @@ const { Op } = require('sequelize');
 const { sequelize, Event, Registration } = require('../models');
 const ApiError = require('../utils/ApiError');
 const reminderService = require('./reminder.service');
+const notificationService = require('./notification.service');
 const { canManageEvent, isAdmin } = require('./access');
 
 // Одна регистрация – одно место. Счетчик events.seats_taken всегда равен числу активных
@@ -18,13 +19,14 @@ const includeEvent = {
 
 const withEvent = (id, transaction) => Registration.findByPk(id, { include: [includeEvent], transaction });
 
-// Бронирование места: условие «мероприятие открыто и есть место» проверяется и счетчик увеличивается
+// Бронирование места: условие «регистрация доступна и есть место» проверяется и счетчик увеличивается
 // одним UPDATE. Строка мероприятия блокируется до конца транзакции, поэтому параллельные запросы
 // выполняются по очереди и не превысят вместимость (дополнительно это гарантирует CHECK в схеме)
 const reserveSeat = async (eventId, transaction) => {
     const [rows] = await sequelize.query(
         `UPDATE events SET seats_taken = seats_taken + 1, updated_at = now()
-         WHERE id = :eventId AND status = 'published' AND starts_at > now()
+         WHERE id = :eventId AND status = 'published' AND registration_open
+           AND starts_at > now() AND (registration_deadline IS NULL OR registration_deadline > now())
            AND (capacity IS NULL OR seats_taken < capacity)
          RETURNING id`,
         { replacements: { eventId }, transaction }
@@ -41,9 +43,13 @@ const releaseSeat = (eventId, transaction) => sequelize.query(
 // Причина, по которой бронирование не удалось
 const explainFailure = async (eventId, transaction) => {
     const event = await Event.findByPk(eventId, { transaction });
-    if (!event) return ApiError.notFound('Мероприятие не найдено');
+    if (!event || event.status === 'draft') return ApiError.notFound('Мероприятие не найдено');
     if (event.status === 'cancelled') return ApiError.conflict('Мероприятие отменено', 'EVENT_CANCELLED');
-    if (event.startsAt <= new Date()) return ApiError.conflict('Мероприятие уже прошло', 'EVENT_PAST');
+    if (event.startsAt <= new Date()) return ApiError.conflict('Мероприятие уже началось или прошло', 'EVENT_PAST');
+    if (!event.registrationOpen) return ApiError.conflict('Регистрация закрыта организатором', 'REGISTRATION_CLOSED');
+    if (event.registrationDeadline && event.registrationDeadline <= new Date()) {
+        return ApiError.conflict('Срок регистрации истек', 'REGISTRATION_DEADLINE_PASSED');
+    }
     return ApiError.conflict('Свободных мест нет', 'NO_SEATS');
 };
 
@@ -79,6 +85,8 @@ const findOrFail = async (id, transaction) => {
     // FOR UPDATE: изменение и отмена одной регистрации выполняются по очереди
     const registration = await Registration.findByPk(id, { transaction, lock: transaction?.LOCK.UPDATE });
     if (!registration) throw ApiError.notFound('Регистрация не найдена');
+    // строка регистрации заблокирована FOR UPDATE: планировщик напоминаний (FOR SHARE ... SKIP LOCKED)
+    // пропускает ее напоминания, пока отмена не зафиксирована
     const event = await Event.findByPk(registration.eventId, { transaction, attributes: ['id', 'organizerId', 'status'] });
     return { registration, event };
 };
@@ -99,28 +107,38 @@ const assertActor = (user, registration, event) => {
 
 // Отмена: запись остается со статусом cancelled (история), место освобождается,
 // ожидающие напоминания этой регистрации отменяются – в одной транзакции
+// Если регистрацию отменил организатор или администратор, участник получает уведомление.
+// Возвращает id созданных уведомлений (отправляются после фиксации транзакции)
 const cancelInTransaction = async (registration, actor, transaction) => {
-    if (registration.status === 'cancelled') return registration.id;
+    if (registration.status === 'cancelled') return [];
     await releaseSeat(registration.eventId, transaction);
     await registration.update({ status: 'cancelled', cancelledAt: new Date(), cancelledBy: actor }, { transaction });
     await reminderService.cancelForRegistration(registration.id, 'registration_cancelled', transaction);
-    return registration.id;
+    if (actor === 'user') return [];
+    return notificationService.createForUser({
+        userId: registration.userId,
+        type: 'registration_cancelled',
+        eventId: registration.eventId,
+        registrationId: registration.id,
+        payload: { by: actor },
+        dedupKey: `registration:${registration.id}:cancelled`
+    }, transaction);
 };
 
 const cancel = async (id, user) => {
-    const { regId, actor } = await sequelize.transaction(async (transaction) => {
+    const ids = await sequelize.transaction(async (transaction) => {
         const { registration, event } = await findOrFail(id, transaction);
         const who = assertActor(user, registration, event);
-        return { regId: await cancelInTransaction(registration, who, transaction), actor: who };
+        return cancelInTransaction(registration, who, transaction);
     });
-    const registration = await withEvent(regId);
-    return Object.assign(registration, { cancelledByActor: actor });
+    await notificationService.deliver(ids);
+    return withEvent(id);
 };
 
 // Изменение: участник меняет комментарий; отметку о посещении (attended) ставят
 // организатор мероприятия и администратор; status = cancelled – то же, что отмена
 const update = async (id, user, { status, comment }) => {
-    const regId = await sequelize.transaction(async (transaction) => {
+    const ids = await sequelize.transaction(async (transaction) => {
         const { registration, event } = await findOrFail(id, transaction);
         const actor = assertActor(user, registration, event);
         if (registration.status === 'cancelled') throw ApiError.conflict('Регистрация отменена', 'REGISTRATION_CANCELLED');
@@ -134,9 +152,10 @@ const update = async (id, user, { status, comment }) => {
         if (status) registration.status = status;
         if (comment !== undefined) registration.comment = comment;
         await registration.save({ transaction });
-        return registration.id;
+        return [];
     });
-    return withEvent(regId);
+    await notificationService.deliver(ids);
+    return withEvent(id);
 };
 
 // Мои регистрации. По умолчанию – только активные; status=cancelled – история отмен, status=all – все

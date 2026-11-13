@@ -8,15 +8,21 @@ const location = z.object({
     url: z.string().trim().url('Некорректная ссылка').or(z.literal('')).optional()
 });
 
+const timezone = z.string().trim().refine(Event.isValidTimeZone, 'Неизвестный часовой пояс (нужен IANA, например Europe/Minsk)');
+
+// Черновик может быть неполным (без дат); требования публикации проверяет сервис
 const base = {
     title: z.string().trim().min(3, 'Название не короче 3 символов').max(150),
     description: z.string().max(5000).optional(),
     type: z.enum(Event.EVENT_TYPES),
-    status: z.enum(Event.EVENT_STATUSES).optional(),
+    // IANA-пояс мероприятия: время отображается в нем, моменты хранятся в timestamptz
+    timezone,
+    registrationOpen: z.boolean().optional(),
+    registrationDeadline: z.coerce.date().nullable().optional(),
     category: recordId.nullable().optional(),
     // владелец мероприятия: передать его может только администратор
     organizer: recordId.optional(),
-    startsAt: z.coerce.date({ message: 'Некорректная дата начала' }),
+    startsAt: z.coerce.date({ message: 'Некорректная дата начала' }).nullable().optional(),
     endsAt: z.coerce.date().nullable().optional(),
     coverUrl: z.string().trim().url('Некорректная ссылка на обложку').or(z.literal('')).optional(),
     capacity: z.number().int().min(1).max(100000).nullable().optional(),
@@ -27,7 +33,9 @@ const base = {
 const endsAfterStart = (v) => !v.endsAt || !v.startsAt || v.endsAt > v.startsAt;
 const endsMessage = { message: 'Окончание должно быть позже начала', path: ['endsAt'] };
 
-const create = z.object(base).refine(endsAfterStart, endsMessage);
+// при создании можно сразу опубликовать (status: published), по умолчанию – черновик;
+// дальше состояние меняется только действиями publish / unpublish / cancel
+const create = z.object({ ...base, status: z.enum(['draft', 'published']).optional() }).refine(endsAfterStart, endsMessage);
 const update = z.object(base).partial()
     .refine((v) => Object.keys(v).length, 'Передайте хотя бы одно поле')
     .refine(endsAfterStart, endsMessage);
@@ -53,4 +61,6 @@ const register = z.object({
     comment: z.string().trim().max(300).optional()
 });
 
-module.exports = { create, update, list, register };
+const cancel = z.object({ reason: z.string().trim().max(500).optional() });
+
+module.exports = { create, update, list, register, cancel };

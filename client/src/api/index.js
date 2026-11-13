@@ -27,6 +27,10 @@ export const eventsApi = {
   // мероприятия текущего организатора (администратор с all: true – все) и статистика мероприятия
   managed: (params, signal) => api.get('/events/managed', { params, signal }).then(data),
   stats: (id) => api.get(`/events/${id}/stats`).then(data),
+  // состояние публикации: черновик → опубликовано → отменено (или обратно в черновик без регистраций)
+  publish: (id) => api.post(`/events/${id}/publish`).then(data),
+  unpublish: (id) => api.post(`/events/${id}/unpublish`).then(data),
+  cancel: (id, reason) => api.post(`/events/${id}/cancel`, { reason: reason || undefined }).then(data),
   register: (id, body) => api.post(`/events/${id}/registrations`, body).then(data),
   participants: (id) => api.get(`/events/${id}/registrations`).then(data),
   participantsCsv: (id) => api.get(`/events/${id}/registrations`, { params: { format: 'csv' }, responseType: 'blob' }).then(data),
@@ -43,7 +47,14 @@ export const remindersApi = {
   create: (body) => api.post('/reminders', body).then(data),
   update: (id, body) => api.patch(`/reminders/${id}`, body).then(data),
   remove: (id) => api.delete(`/reminders/${id}`),
-  readAll: () => api.post('/reminders/read-all').then(data),
+};
+
+// История уведомлений (напоминания, перенос, смена места, отмена)
+export const notificationsApi = {
+  list: (params) => api.get('/notifications', { params }).then(data),
+  unreadCount: () => api.get('/notifications/unread-count').then(data),
+  setRead: (id, read = true) => api.patch(`/notifications/${id}`, { read }).then(data),
+  readAll: () => api.post('/notifications/read-all').then(data),
 };
 
 export const categoriesApi = {

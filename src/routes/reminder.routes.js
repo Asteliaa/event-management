@@ -10,7 +10,6 @@ const ctrl = require('../controllers/reminder.controller');
 router.use(authenticate);
 router.get('/', validate({ query: schemas.reminderList }), h(ctrl.list));
 router.post('/', validate({ body: schemas.reminderCreate }), h(ctrl.create));
-router.post('/read-all', h(ctrl.readAll));
 router.patch('/:id', validate({ params: idParam, body: schemas.reminderUpdate }), h(ctrl.update));
 router.delete('/:id', validate({ params: idParam }), h(ctrl.remove));
 

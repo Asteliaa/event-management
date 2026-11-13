@@ -1,7 +1,7 @@
 const { useTestDB, createUser, createEvent, inDays, missingId } = require('./helpers');
 const request = require('supertest');
 const app = require('../src/app');
-const { Reminder, Event, Registration } = require('../src/models');
+const { Reminder, Event, Registration, Notification } = require('../src/models');
 const scheduler = require('../src/jobs/reminderScheduler');
 const notify = require('../src/socket/notify');
 
@@ -102,27 +102,36 @@ describe('Планировщик напоминаний', () => {
         expect(emitted).toHaveLength(1);
         expect(emitted[0]).toMatchObject({
             rooms: [`user:${user.id}`],
-            name: 'reminder:due',
-            payload: { offsetMinutes: 15, status: 'sent', event: { title: event.title } }
+            name: 'notification:new',
+            payload: { type: 'reminder', payload: { offsetMinutes: 15, scheduleVersion: 1 }, event: { title: event.title } }
         });
+        // результат хранится в истории независимо от сокета
+        expect(await Notification.count({ where: { userId: user.id, type: 'reminder' } })).toBe(1);
     });
 
-    it('центр уведомлений: непрочитанные, отметка прочитанным и «прочитать все»', async () => {
+    it('история уведомлений: пагинация, непрочитанные, отметка прочитанным и «прочитать все»', async () => {
         const user = await createUser();
         const event = await createEvent({ startsAt: new Date(Date.now() + 20 * 60e3) });
         await enroll(event, user);
-        await create(user, { event: event.id, offsetMinutes: 15 });
-        await create(user, { event: event.id, offsetMinutes: 10 });
-        await scheduler.runOnce(new Date(Date.now() + 11 * 60e3));
+        for (const offset of [15, 14, 13]) await create(user, { event: event.id, offsetMinutes: offset });
+        await scheduler.runOnce(new Date(Date.now() + 8 * 60e3));
+        const napi = '/api/v1/notifications';
 
-        const unread = await request(app).get(`${api}?unread=true`).set('Authorization', user.auth);
-        expect(unread.body).toHaveLength(2);
-        await request(app).patch(`${api}/${unread.body[0].id}`).set('Authorization', user.auth).send({ read: true });
-        expect((await request(app).get(`${api}?unread=true`).set('Authorization', user.auth)).body).toHaveLength(1);
+        const page1 = await request(app).get(`${napi}?limit=2`).set('Authorization', user.auth);
+        expect(page1.body.data).toHaveLength(2);
+        expect(page1.body.meta).toMatchObject({ total: 3, pages: 2, unread: 3 });
+        const first = page1.body.data[0];
+        await request(app).patch(`${napi}/${first.id}`).set('Authorization', user.auth).send({ read: true });
+        expect((await request(app).get(`${napi}/unread-count`).set('Authorization', user.auth)).body.unread).toBe(2);
+        expect((await request(app).get(`${napi}?unread=true`).set('Authorization', user.auth)).body.data).toHaveLength(2);
 
-        const all = await request(app).post(`${api}/read-all`).set('Authorization', user.auth);
-        expect(all.body.updated).toBe(1);
-        expect((await request(app).get(`${api}?unread=true`).set('Authorization', user.auth)).body).toHaveLength(0);
+        // чужое уведомление недоступно
+        const other = await createUser();
+        expect((await request(app).patch(`${napi}/${first.id}`).set('Authorization', other.auth).send({ read: true })).status).toBe(404);
+
+        const all = await request(app).post(`${napi}/read-all`).set('Authorization', user.auth);
+        expect(all.body.updated).toBe(2);
+        expect((await request(app).get(`${napi}/unread-count`).set('Authorization', user.auth)).body.unread).toBe(0);
     });
 
     it('отправленное напоминание нельзя перенести', async () => {
@@ -143,16 +152,17 @@ describe('Планировщик напоминаний', () => {
         await enroll(other, user);
         await create(user, { event: event.id, offsetMinutes: 15 });
         await create(user, { event: other.id, offsetMinutes: 15 });
-        await Event.update({ status: 'cancelled' }, { where: { id: event.id } });
+        // прямое изменение в БД, минуя сервис отмены (он сам отменил бы напоминания): проверяется защита планировщика
+        await Event.update({ status: 'cancelled', cancelledAt: new Date() }, { where: { id: event.id } });
 
         const emitted = [];
         notify.setIO({ to: (rooms) => ({ emit: (name, payload) => emitted.push(payload) }) });
         const later = new Date(Date.now() + 6 * 60e3);
         expect(await scheduler.runOnce(later)).toBe(1);
         expect(emitted.map((p) => p.event.id)).toEqual([other.id]);
-        // напоминание отмененного мероприятия не помечено отправленным и не попадает в центр уведомлений
+        // напоминание отмененного мероприятия не помечено отправленным и не попадает в историю уведомлений
         expect((await Reminder.findOne({ where: { eventId: event.id } })).status).toBe('pending');
-        expect((await request(app).get(`${api}?unread=true`).set('Authorization', user.auth)).body).toHaveLength(1);
+        expect(await Notification.count({ where: { userId: user.id } })).toBe(1);
     });
 
     it('start() запускает периодическую проверку и возвращает функцию остановки', async () => {

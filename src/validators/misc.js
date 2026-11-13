@@ -19,14 +19,20 @@ const reminderCreate = z.object({
 });
 
 const reminderUpdate = z.object({
-    offsetMinutes: z.number().int().min(5).max(60 * 24 * 30).optional(),
-    read: z.boolean().optional()
-}).refine((v) => Object.keys(v).length, 'Передайте хотя бы одно поле');
+    offsetMinutes: z.number().int().min(5).max(60 * 24 * 30)
+});
 
 const reminderList = z.object({
-    status: z.enum(Reminder.STATUSES).optional(),
+    status: z.enum(Reminder.STATUSES).optional()
+});
+
+const notificationList = z.object({
+    ...pageQuery,
+    limit: z.coerce.number().int().min(1).max(100).default(20),
     unread: z.enum(['true', 'false']).transform((v) => v === 'true').optional()
 });
+
+const notificationUpdate = z.object({ read: z.boolean() });
 
 const userList = z.object({
     ...pageQuery,
@@ -49,7 +55,9 @@ const registrationList = z.object({
 const managedList = z.object({
     ...pageQuery,
     limit: z.coerce.number().int().min(1).max(100).default(20),
-    all: z.enum(['true', 'false']).transform((v) => v === 'true').optional()
+    all: z.enum(['true', 'false']).transform((v) => v === 'true').optional(),
+    status: z.enum(['draft', 'published', 'cancelled']).optional(),
+    search: z.string().trim().max(100).optional()
 });
 
 const myRegistrations = z.object({
@@ -59,5 +67,5 @@ const myRegistrations = z.object({
 
 module.exports = {
     category, registrationUpdate, reminderCreate, reminderUpdate, reminderList,
-    userList, userUpdate, registrationList, managedList, myRegistrations
+    userList, userUpdate, registrationList, managedList, myRegistrations, notificationList, notificationUpdate
 };

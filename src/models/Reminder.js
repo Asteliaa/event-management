@@ -23,7 +23,7 @@ class Reminder extends Model {
             status: v.status,
             cancelReason: v.cancelReason,
             sentAt: v.sentAt,
-            readAt: v.readAt,
+            scheduleVersion: v.scheduleVersion,
             createdAt: v.createdAt,
             updatedAt: v.updatedAt
         });
@@ -43,7 +43,8 @@ Reminder.init({
     status: { type: DataTypes.TEXT, allowNull: false, defaultValue: 'pending', validate: { isIn: [STATUSES] } },
     cancelReason: { type: DataTypes.TEXT },
     sentAt: { type: DataTypes.DATE },
-    readAt: { type: DataTypes.DATE }
+    // версия расписания мероприятия, для которой рассчитано remindAt
+    scheduleVersion: { type: DataTypes.INTEGER, allowNull: false, defaultValue: 1 }
 }, { sequelize, modelName: 'Reminder', tableName: 'reminders' });
 
 Reminder.STATUSES = STATUSES;

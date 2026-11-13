@@ -132,8 +132,15 @@ describe('Уведомления в реальном времени', () => {
         const s = await connectAs(await createUser());
         const received = waitFor(s, 'event:created');
         await request(app).post('/api/v1/events').set('Authorization', admin.auth)
-            .send({ title: 'Новое мероприятие', type: 'meeting', startsAt: new Date(Date.now() + 864e5).toISOString() });
-        expect(await received).toMatchObject({ event: { title: 'Новое мероприятие' }, by: 'Организатор' });
+            .send({
+                title: 'Новое мероприятие', type: 'meeting', timezone: 'Europe/Minsk', status: 'published',
+                startsAt: new Date(Date.now() + 864e5).toISOString(), endsAt: new Date(Date.now() + 866e5).toISOString(),
+                location: { online: true, url: 'https://meet.example.com/secret-room' }
+            });
+        const payload = await received;
+        expect(payload).toMatchObject({ event: { title: 'Новое мероприятие' }, by: 'Организатор' });
+        // ссылка подключения не рассылается всем клиентам
+        expect(JSON.stringify(payload)).not.toContain('secret-room');
     });
 
     it('напоминание приходит во все вкладки пользователя, но не другим', async () => {
@@ -146,12 +153,12 @@ describe('Уведомления в реальном времени', () => {
         const tab2 = await connectAs(user);
         const stranger = await connectAs(other);
         let strangerGot = false;
-        stranger.on('reminder:due', () => { strangerGot = true; });
+        stranger.on('notification:new', () => { strangerGot = true; });
 
-        const got = Promise.all([waitFor(tab1, 'reminder:due'), waitFor(tab2, 'reminder:due')]);
+        const got = Promise.all([waitFor(tab1, 'notification:new'), waitFor(tab2, 'notification:new')]);
         await scheduler.runOnce(new Date(Date.now() + 6 * 60e3));
         const [r1, r2] = await got;
-        expect(r1).toMatchObject({ offsetMinutes: 15, event: { title: 'Скоро начнется' } });
+        expect(r1).toMatchObject({ type: 'reminder', payload: { offsetMinutes: 15 }, event: { title: 'Скоро начнется' } });
         expect(r2.id).toBe(r1.id);
         await new Promise((r) => setTimeout(r, 100));
         expect(strangerGot).toBe(false);

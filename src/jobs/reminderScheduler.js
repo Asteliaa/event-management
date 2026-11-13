@@ -1,16 +1,15 @@
 const config = require('../config');
 const reminderService = require('../services/reminder.service');
-const notify = require('../socket/notify');
+const notificationService = require('../services/notification.service');
 
-// Планировщик напоминаний: раз в intervalMs выбирает наступившие напоминания
-// и отправляет каждое в личную комнату пользователя (все его вкладки) через Socket.IO.
-// Если пользователь не в сети, напоминание остается в центре уведомлений (status: sent, без readAt)
+// Планировщик напоминаний: раз в intervalMs в одной транзакции выбирает наступившие напоминания,
+// записывает уведомления и помечает напоминания отправленными; после фиксации отправляет уведомления
+// в личные комнаты пользователей (все вкладки) событием notification:new.
+// Если пользователь не в сети или отправка в сокет не удалась, уведомление остается в истории
 const runOnce = async (now = new Date()) => {
-    const due = await reminderService.takeDue(now);
-    for (const reminder of due) {
-        notify.toRooms([notify.rooms.user(String(reminder.userId))], 'reminder:due', reminder.toJSON());
-    }
-    return due.length;
+    const ids = await reminderService.takeDue(now);
+    await notificationService.deliver(ids);
+    return ids.length;
 };
 
 const start = (intervalMs = config.reminders.intervalMs) => {

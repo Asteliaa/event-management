@@ -3,8 +3,9 @@ import { Link } from 'react-router';
 import { Bell, BellOff, CheckCheck } from 'lucide-react';
 import { useNotifications } from '../../context/NotificationContext.jsx';
 import { formatDateTime } from '../../utils/format.js';
+import { notificationText } from '../../utils/notifications.js';
 
-// Центр уведомлений: отправленные напоминания с отметкой «прочитано»
+// Центр уведомлений: последние уведомления из истории (напоминания, перенос, смена места, отмена)
 export default function NotificationBell() {
   const { inbox, unreadCount, markRead, markAllRead } = useNotifications();
   const [open, setOpen] = useState(false);
@@ -26,28 +27,26 @@ export default function NotificationBell() {
       {open && (
         <div className="dropdown__panel notif">
           <div className="notif__head">
-            <strong>Напоминания</strong>
+            <strong>Уведомления</strong>
             {unreadCount > 0 && (
               <button type="button" className="link-btn" onClick={markAllRead}><CheckCheck size={14} /> Прочитать все</button>
             )}
           </div>
           {inbox.length === 0 ? (
-            <div className="notif__empty"><BellOff size={28} /><p>Пока нет напоминаний</p></div>
+            <div className="notif__empty"><BellOff size={28} /><p>Пока нет уведомлений</p></div>
           ) : (
             <ul className="notif__list">
               {inbox.slice(0, 8).map((r) => (
                 <li key={r.id} className={r.readAt ? '' : 'is-unread'}>
-                  <Link to={`/events/${r.event?.id}`} onClick={() => { markRead(r.id); setOpen(false); }}>
-                    <span className="notif__title">{r.event?.title || 'Мероприятие удалено'}</span>
-                    <span className="notif__meta">
-                      Начало {r.event && formatDateTime(r.event.startsAt)}
-                    </span>
+                  <Link to={r.event ? `/events/${r.event.id}` : '/notifications'} onClick={() => { markRead(r.id); setOpen(false); }}>
+                    <span className="notif__title">{notificationText(r)}</span>
+                    <span className="notif__meta">{formatDateTime(r.createdAt)}</span>
                   </Link>
                 </li>
               ))}
             </ul>
           )}
-          <Link to="/profile/reminders" className="notif__all" onClick={() => setOpen(false)}>Все напоминания</Link>
+          <Link to="/notifications" className="notif__all" onClick={() => setOpen(false)}>Все уведомления</Link>
         </div>
       )}
     </div>

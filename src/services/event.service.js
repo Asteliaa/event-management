@@ -1,6 +1,7 @@
 const { Op, QueryTypes } = require('sequelize');
 const { sequelize, Event, Registration, Reminder, Favorite, User } = require('../models');
-const { assertCanManageEvent, isAdmin } = require('./access');
+const { assertCanManageEvent, canManageEvent, isAdmin } = require('./access');
+const notificationService = require('./notification.service');
 const ApiError = require('../utils/ApiError');
 const { paginate, pageResult, likePattern } = require('../utils/pagination');
 const reminderService = require('./reminder.service');
@@ -16,8 +17,10 @@ const SORTS = {
 const includeCategory = { association: 'category', attributes: ['id', 'name', 'slug', 'color'] };
 
 // Условие WHERE из параметров запроса каталога
+// Каталог показывает только опубликованные мероприятия: черновики видят владелец и администратор,
+// отмененные доступны по ссылке и в профиле участника
 const buildFilter = ({ search, type, category, city, tag, online, from, to, when }) => {
-    const and = [];
+    const and = [{ status: 'published' }];
     if (search) {
         const pattern = likePattern(search);
         and.push({
@@ -58,23 +61,25 @@ const list = async (query) => {
     return pageResult(rows, count, page);
 };
 
-const findOrFail = async (id) => {
+// Мероприятие для просмотра: черновик существует только для владельца и администратора
+const findOrFail = async (id, user) => {
     const event = await Event.findByPk(id, {
         include: [includeCategory, { association: 'organizer', attributes: ['id', 'name'] }]
     });
-    if (!event) throw ApiError.notFound('Мероприятие не найдено');
+    if (!event || (event.status === 'draft' && !canManageEvent(user, event))) throw ApiError.notFound('Мероприятие не найдено');
     return event;
 };
 
 // Карточка мероприятия; для вошедшего пользователя добавляется его регистрация,
 // напоминания и признак «в избранном»
 const getById = async (id, user) => {
-    const event = await findOrFail(id);
+    const event = await findOrFail(id, user);
     const result = event.toJSON();
+    result.canManage = canManageEvent(user, event);
     if (user) {
         const [registration, reminders, favorite] = await Promise.all([
             Registration.findOne({ where: { eventId: id, userId: user.id, status: { [Op.ne]: 'cancelled' } } }),
-            Reminder.findAll({ where: { eventId: id, userId: user.id }, order: [['offsetMinutes', 'DESC']] }),
+            Reminder.findAll({ where: { eventId: id, userId: user.id, status: ['pending', 'sent'] }, order: [['offsetMinutes', 'DESC']] }),
             Favorite.count({ where: { eventId: id, userId: user.id } })
         ]);
         result.myRegistration = registration ? registration.toJSON() : null;
@@ -116,47 +121,198 @@ const assertOrganizerChange = async (data, user, transaction) => {
     await assertOrganizerCandidate(data.organizer, transaction);
 };
 
-// Создает организатор или администратор; владелец – создатель (администратор может сразу назначить другого)
-const create = async (data, user) => {
-    await assertOrganizerChange(data, user);
-    const event = await Event.create({ organizerId: user.id, ...toAttributes(data) });
-    return Event.findByPk(event.id, { include: [includeCategory] });
+const validationError = (details) => new ApiError(422, 'Ошибка валидации данных', { details });
+
+const LOCATION_ATTRS = ['locationCity', 'locationVenue', 'locationOnline', 'locationUrl'];
+
+// Требования к мероприятию, которое публикуется (или уже опубликовано и изменяется):
+// корректные начало и окончание, данные выбранного формата, срок регистрации не позже начала
+const publicationErrors = (e) => {
+    const details = [];
+    if (!e.startsAt) details.push({ field: 'body.startsAt', message: 'Для публикации укажите начало' });
+    if (!e.endsAt) details.push({ field: 'body.endsAt', message: 'Для публикации укажите окончание' });
+    if (e.startsAt && e.endsAt && e.endsAt <= e.startsAt) {
+        details.push({ field: 'body.endsAt', message: 'Окончание должно быть позже начала' });
+    }
+    if (e.locationOnline && !e.locationUrl) {
+        details.push({ field: 'body.location.url', message: 'Для онлайн-мероприятия укажите ссылку подключения' });
+    }
+    if (!e.locationOnline && !e.locationCity) {
+        details.push({ field: 'body.location.city', message: 'Для очного мероприятия укажите город' });
+    }
+    return details;
 };
 
+const assertDates = (e) => {
+    const details = [];
+    if (e.startsAt && e.endsAt && e.endsAt <= e.startsAt) {
+        details.push({ field: 'body.endsAt', message: 'Окончание должно быть позже начала' });
+    }
+    if (e.registrationDeadline && e.startsAt && e.registrationDeadline > e.startsAt) {
+        details.push({ field: 'body.registrationDeadline', message: 'Срок регистрации не может быть позже начала' });
+    }
+    if (details.length) throw validationError(details);
+};
+
+const assertPublishable = (e) => {
+    const details = publicationErrors(e);
+    if (details.length) throw validationError(details);
+};
+
+const reload = (id) => Event.findByPk(id, { include: [includeCategory, { association: 'organizer', attributes: ['id', 'name'] }] });
+
+// Создает организатор или администратор; владелец – создатель (администратор может сразу назначить другого).
+// По умолчанию создается черновик; status = published – создать и сразу опубликовать
+const create = async (data, user) => {
+    await assertOrganizerChange(data, user);
+    const attrs = { organizerId: user.id, ...toAttributes(data), status: data.status || 'draft' };
+    const event = Event.build(attrs);
+    assertDates(event);
+    if (event.status === 'published') {
+        assertPublishable(event);
+        if (event.startsAt <= new Date()) throw validationError([{ field: 'body.startsAt', message: 'Начало должно быть в будущем' }]);
+        event.publishedAt = new Date();
+    }
+    await event.save();
+    return reload(event.id);
+};
+
+const sameTime = (a, b) => (a ? a.getTime() : null) === (b ? b.getTime() : null);
+
+// Изменение мероприятия. Отмененное не изменяется. Для опубликованного:
+// - перенос начала или окончания – новая версия расписания, пересчет напоминаний и уведомление участникам;
+//   у завершенного мероприятия расписание не меняется;
+// - смена места, формата или ссылки – уведомление участникам, напоминания не затрагиваются;
+// - после изменения мероприятие по-прежнему должно удовлетворять требованиям публикации.
+// Все изменения и уведомления – одна транзакция; отправка в Socket.IO – после фиксации
 const update = async (id, data, user) => {
     const attrs = toAttributes(data);
-    const updated = await sequelize.transaction(async (transaction) => {
-        // блокировка строки: регистрации этого мероприятия ждут, пока проверка вместимости не завершится
+    const { eventId, notificationIds } = await sequelize.transaction(async (transaction) => {
+        // блокировка строки: регистрации и планировщик напоминаний ждут окончания изменения
         const event = await Event.findByPk(id, { transaction, lock: transaction.LOCK.UPDATE });
-        if (!event) throw ApiError.notFound('Мероприятие не найдено');
+        if (!event || (event.status === 'draft' && !canManageEvent(user, event))) throw ApiError.notFound('Мероприятие не найдено');
         assertCanManageEvent(user, event);
         await assertOrganizerChange(data, user, transaction);
+        if (event.status === 'cancelled') throw ApiError.conflict('Отмененное мероприятие не изменяется', 'EVENT_CANCELLED');
         if (attrs.capacity && attrs.capacity < event.seatsTaken) {
             throw ApiError.conflict(`Вместимость не может быть меньше числа занятых мест (${event.seatsTaken})`, 'CAPACITY_TOO_SMALL');
         }
-        const startsAt = attrs.startsAt || event.startsAt;
-        const endsAt = 'endsAt' in attrs ? attrs.endsAt : event.endsAt;
-        if (endsAt && endsAt <= startsAt) {
-            throw new ApiError(422, 'Ошибка валидации данных', {
-                details: [{ field: 'body.endsAt', message: 'Окончание должно быть позже начала' }]
-            });
+
+        const before = { startsAt: event.startsAt, endsAt: event.endsAt, phase: event.phase };
+        const beforeLocation = Object.fromEntries(LOCATION_ATTRS.map((a) => [a, event.get(a)]));
+        event.set(attrs);
+        assertDates(event);
+
+        const ids = [];
+        if (event.status === 'published') {
+            assertPublishable(event);
+            const scheduleChanged = !sameTime(before.startsAt, event.startsAt) || !sameTime(before.endsAt, event.endsAt);
+            if (scheduleChanged) {
+                if (before.phase === 'finished') {
+                    throw ApiError.conflict('Расписание завершенного мероприятия не изменяется', 'EVENT_FINISHED');
+                }
+                if (!sameTime(before.startsAt, event.startsAt) && event.startsAt <= new Date()) {
+                    throw validationError([{ field: 'body.startsAt', message: 'Новое начало должно быть в будущем' }]);
+                }
+                event.scheduleVersion += 1;
+            }
+            await event.save({ transaction });
+            if (scheduleChanged) {
+                await reminderService.rescheduleForEvent(event, transaction);
+                ids.push(...await notificationService.createForEventParticipants({
+                    eventId: event.id,
+                    type: 'event_rescheduled',
+                    payload: {
+                        startsAt: event.startsAt, endsAt: event.endsAt, timezone: event.timezone,
+                        previousStartsAt: before.startsAt, previousEndsAt: before.endsAt, scheduleVersion: event.scheduleVersion
+                    },
+                    dedupKey: `event:${event.id}:rescheduled:v${event.scheduleVersion}`
+                }, transaction));
+            }
+            const locationChanged = LOCATION_ATTRS.filter((a) => event.get(a) !== beforeLocation[a]);
+            if (locationChanged.length) {
+                // ссылка подключения в уведомление не попадает – только признак, что она изменилась
+                ids.push(...await notificationService.createForEventParticipants({
+                    eventId: event.id,
+                    type: 'event_location_changed',
+                    payload: {
+                        city: event.locationCity, venue: event.locationVenue, online: event.locationOnline,
+                        urlChanged: locationChanged.includes('locationUrl')
+                    },
+                    dedupKey: `event:${event.id}:location:${event.updatedAt.getTime()}`
+                }, transaction));
+            }
+        } else {
+            await event.save({ transaction });
         }
-        const dateChanged = attrs.startsAt && attrs.startsAt.getTime() !== event.startsAt.getTime();
-        await event.update(attrs, { transaction });
-        if (dateChanged) await reminderService.rescheduleForEvent(event, transaction);
-        return event;
+        return { eventId: event.id, notificationIds: ids };
     });
-    return Event.findByPk(updated.id, { include: [includeCategory] });
+    await notificationService.deliver(notificationIds);
+    return reload(eventId);
 };
 
-// Удаление допускается только для мероприятия без регистраций (в том числе отмененных):
-// история участия не уничтожается, для остальных случаев есть отмена мероприятия.
-// Напоминаний без регистраций нет; сообщения чата и избранное удаляет БД (ON DELETE CASCADE)
-const remove = async (id, user) => sequelize.transaction(async (transaction) => {
+// Действия с состоянием публикации. Строка мероприятия блокируется на время действия
+const withLockedEvent = (id, user, fn) => sequelize.transaction(async (transaction) => {
     const event = await Event.findByPk(id, { transaction, lock: transaction.LOCK.UPDATE });
-    if (!event) throw ApiError.notFound('Мероприятие не найдено');
+    if (!event || (event.status === 'draft' && !canManageEvent(user, event))) throw ApiError.notFound('Мероприятие не найдено');
     assertCanManageEvent(user, event);
-    if (await Registration.count({ where: { eventId: id }, transaction })) {
+    return fn(event, transaction);
+});
+
+// Публикация черновика: обязательны начало и окончание (начало – в будущем) и данные формата
+const publish = async (id, user) => {
+    const eventId = await withLockedEvent(id, user, async (event, transaction) => {
+        if (event.status !== 'draft') throw ApiError.conflict('Опубликовать можно только черновик', 'EVENT_NOT_DRAFT');
+        assertPublishable(event);
+        if (event.startsAt <= new Date()) throw validationError([{ field: 'body.startsAt', message: 'Начало должно быть в будущем' }]);
+        await event.update({ status: 'published', publishedAt: new Date() }, { transaction });
+        return event.id;
+    });
+    return reload(eventId);
+};
+
+// Снятие с публикации (в черновик) – только пока никто не регистрировался
+const unpublish = async (id, user) => {
+    const eventId = await withLockedEvent(id, user, async (event, transaction) => {
+        if (event.status !== 'published') throw ApiError.conflict('Снять с публикации можно только опубликованное мероприятие', 'EVENT_NOT_PUBLISHED');
+        if (await Registration.count({ where: { eventId: event.id }, transaction })) {
+            throw ApiError.conflict('На мероприятие уже регистрировались: его можно только отменить', 'EVENT_HAS_REGISTRATIONS');
+        }
+        await event.update({ status: 'draft', publishedAt: null }, { transaction });
+        return event.id;
+    });
+    return reload(eventId);
+};
+
+// Отмена опубликованного мероприятия: история регистраций сохраняется (регистрации остаются как были),
+// ожидающие напоминания отменяются, активные участники получают уведомление – в одной транзакции
+const cancel = async (id, user, { reason } = {}) => {
+    const { eventId, ids } = await withLockedEvent(id, user, async (event, transaction) => {
+        if (event.status === 'cancelled') throw ApiError.conflict('Мероприятие уже отменено', 'EVENT_CANCELLED');
+        if (event.status !== 'published') throw ApiError.conflict('Черновик не отменяют – его можно удалить', 'EVENT_NOT_PUBLISHED');
+        if (event.phase === 'finished') throw ApiError.conflict('Завершенное мероприятие нельзя отменить', 'EVENT_FINISHED');
+        await event.update({ status: 'cancelled', cancelledAt: new Date(), cancelReason: reason || null }, { transaction });
+        await reminderService.cancelForEvent(event.id, transaction);
+        const created = await notificationService.createForEventParticipants({
+            eventId: event.id,
+            type: 'event_cancelled',
+            payload: { reason: reason || null },
+            dedupKey: `event:${event.id}:cancelled`
+        }, transaction);
+        return { eventId: event.id, ids: created };
+    });
+    await notificationService.deliver(ids);
+    return reload(eventId);
+};
+
+// Удаление – только черновика без регистраций: история участия не уничтожается,
+// опубликованное мероприятие снимают с публикации или отменяют.
+// Сообщения чата и избранное черновика удаляет БД (ON DELETE CASCADE)
+const remove = async (id, user) => withLockedEvent(id, user, async (event, transaction) => {
+    if (event.status !== 'draft') {
+        throw ApiError.conflict('Удалить можно только черновик: опубликованное мероприятие снимите с публикации или отмените', 'EVENT_NOT_DRAFT');
+    }
+    if (await Registration.count({ where: { eventId: event.id }, transaction })) {
         throw ApiError.conflict('Нельзя удалить мероприятие, на которое уже регистрировались: его можно отменить', 'EVENT_HAS_REGISTRATIONS');
     }
     await event.destroy({ transaction });
@@ -166,11 +322,14 @@ const remove = async (id, user) => sequelize.transaction(async (transaction) => 
 // Мероприятия организатора (для администратора – все) с числом активных и отмененных регистраций
 const listManaged = async (user, query) => {
     const where = isAdmin(user) && query.all ? {} : { organizerId: user.id };
+    if (query.status) where.status = query.status;
+    if (query.search) where.title = { [Op.iLike]: likePattern(query.search) };
     const page = paginate(query);
     const { rows, count } = await Event.findAndCountAll({
         where,
-        include: [includeCategory],
-        order: [['startsAt', 'DESC'], ['id', 'DESC']],
+        include: [includeCategory, { association: 'organizer', attributes: ['id', 'name'] }],
+        // черновики без даты – первыми
+        order: [[sequelize.literal('starts_at IS NULL'), 'DESC'], ['startsAt', 'DESC'], ['id', 'DESC']],
         offset: page.skip,
         limit: page.limit
     });
@@ -193,7 +352,8 @@ const listManaged = async (user, query) => {
 // Статистика одного мероприятия для его организатора и администратора
 const stats = async (id, user) => {
     const event = await Event.findByPk(id);
-    if (!event) throw ApiError.notFound('Мероприятие не найдено');
+    if (!event || (event.status === 'draft' && !canManageEvent(user, event))) throw ApiError.notFound('Мероприятие не найдено');
+    assertCanManageEvent(user, event);
     assertCanManageEvent(user, event);
     const [[totals], timeline] = await Promise.all([
         sequelize.query(
@@ -222,7 +382,7 @@ const stats = async (id, user) => {
 // Похожие мероприятия: та же категория или общие теги, только будущие
 const similar = async (id, limit = 3) => {
     const event = await Event.findByPk(id);
-    if (!event) throw ApiError.notFound('Мероприятие не найдено');
+    if (!event || event.status === 'draft') throw ApiError.notFound('Мероприятие не найдено');
     const or = [{ tags: { [Op.overlap]: event.tags } }];
     if (event.categoryId) or.push({ categoryId: event.categoryId });
     return Event.findAll({
@@ -237,10 +397,13 @@ const similar = async (id, limit = 3) => {
 const cities = async () => {
     const rows = await sequelize.query(
         `SELECT DISTINCT location_city AS city FROM events
-         WHERE location_city IS NOT NULL AND location_city <> '' ORDER BY 1`,
+         WHERE status = 'published' AND location_city IS NOT NULL AND location_city <> '' ORDER BY 1`,
         { type: QueryTypes.SELECT }
     );
     return rows.map((r) => r.city);
 };
 
-module.exports = { list, getById, findOrFail, create, update, remove, listManaged, stats, similar, cities, buildFilter };
+module.exports = {
+    list, getById, findOrFail, create, update, publish, unpublish, cancel, remove, listManaged, stats, similar, cities, buildFilter,
+    publicationErrors
+};

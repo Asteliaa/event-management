@@ -8,6 +8,7 @@ import EventPage from './pages/EventPage.jsx';
 import { LoginPage, RegisterPage } from './pages/AuthPages.jsx';
 import ProfileLayout, { MyFavorites, MyRegistrations, MyReminders, ProfileSettings } from './pages/ProfilePage.jsx';
 import { AboutPage, NotFoundPage } from './pages/MiscPages.jsx';
+import NotificationsPage from './pages/NotificationsPage.jsx';
 
 // Страницы администратора загружаются отдельными частями сборки (code splitting)
 const AdminLayout = lazy(() => import('./pages/admin/AdminLayout.jsx'));
@@ -34,6 +35,7 @@ export default function App() {
         </Route>
 
         <Route element={<ProtectedRoute />}>
+          <Route path="notifications" element={<NotificationsPage />} />
           <Route path="profile" element={<ProfileLayout />}>
             <Route index element={<MyRegistrations />} />
             <Route path="favorites" element={<MyFavorites />} />

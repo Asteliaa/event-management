@@ -126,7 +126,11 @@ describe('GET /events/:id', () => {
 });
 
 describe('Создание, изменение и удаление (администратор)', () => {
-    const body = () => ({ title: 'Новый вебинар', type: 'webinar', startsAt: inDays(5).toISOString(), capacity: 30, tags: ['React', 'JS'] });
+    const body = () => ({
+        title: 'Новый вебинар', type: 'webinar', timezone: 'Europe/Minsk', capacity: 30, tags: ['React', 'JS'],
+        startsAt: inDays(5).toISOString(), endsAt: new Date(inDays(5).getTime() + 3600e3).toISOString(),
+        location: { online: true, url: 'https://meet.example.com/demo' }
+    });
 
     it('401 без токена, 403 для обычного пользователя', async () => {
         const user = await createUser();
@@ -134,11 +138,14 @@ describe('Создание, изменение и удаление (админи
         expect((await request(app).post(api).set('Authorization', user.auth).send(body())).status).toBe(403);
     });
 
-    it('201: создает, приводит теги к нижнему регистру, заголовок Location', async () => {
+    it('201: по умолчанию создает черновик, приводит теги к нижнему регистру, заголовок Location', async () => {
         const admin = await createAdmin();
         const res = await request(app).post(api).set('Authorization', admin.auth).send(body());
         expect(res.status).toBe(201);
-        expect(res.body).toMatchObject({ title: 'Новый вебинар', tags: ['react', 'js'], seatsTaken: 0, seatsLeft: 30, status: 'published' });
+        expect(res.body).toMatchObject({
+            title: 'Новый вебинар', tags: ['react', 'js'], seatsTaken: 0, seatsLeft: 30, status: 'draft',
+            timezone: 'Europe/Minsk', scheduleVersion: 1, registrationOpen: true
+        });
         expect(res.headers.location).toBe(`/api/v1/events/${res.body.id}`);
         expect(String((await Event.findByPk(res.body.id)).organizerId)).toBe(admin.id);
     });
@@ -146,9 +153,9 @@ describe('Создание, изменение и удаление (админи
     it('422: обязательные поля и окончание раньше начала', async () => {
         const admin = await createAdmin();
         const res = await request(app).post(api).set('Authorization', admin.auth)
-            .send({ title: 'X', type: 'party', startsAt: inDays(5), endsAt: inDays(4) });
+            .send({ title: 'X', type: 'party', timezone: 'Mars/Olympus', startsAt: inDays(5), endsAt: inDays(4) });
         expect(res.status).toBe(422);
-        expect(res.body.error.details.map((d) => d.field)).toEqual(expect.arrayContaining(['body.title', 'body.type']));
+        expect(res.body.error.details.map((d) => d.field)).toEqual(expect.arrayContaining(['body.title', 'body.type', 'body.timezone']));
         const res2 = await request(app).post(api).set('Authorization', admin.auth)
             .send({ ...body(), endsAt: inDays(4).toISOString() });
         expect(res2.body.error.details[0].field).toBe('body.endsAt');
@@ -172,33 +179,34 @@ describe('Создание, изменение и удаление (админи
         expect((await request(app).patch(`${api}/${missingId}`).set('Authorization', admin.auth).send({ title: 'Новое' })).status).toBe(404);
     });
 
-    it('PATCH даты переносит неотправленные напоминания', async () => {
+    it('PATCH даты переносит неотправленные напоминания (новая версия расписания)', async () => {
         const admin = await createAdmin();
         const user = await createUser();
         const event = await createEvent({ startsAt: inDays(10) });
         await request(app).post(`${api}/${event.id}/registrations`).set('Authorization', user.auth).send({});
         const newStart = inDays(12);
-        await request(app).patch(`${api}/${event.id}`).set('Authorization', admin.auth).send({ startsAt: newStart.toISOString() });
+        // окончание раньше нового начала – 422, перенос не выполняется
+        const bad = await request(app).patch(`${api}/${event.id}`).set('Authorization', admin.auth).send({ startsAt: newStart.toISOString() });
+        expect(bad.status).toBe(422);
+        await request(app).patch(`${api}/${event.id}`).set('Authorization', admin.auth)
+            .send({ startsAt: newStart.toISOString(), endsAt: new Date(newStart.getTime() + 3600e3).toISOString() });
         const reminder = await Reminder.findOne({ where: { eventId: event.id } });
         expect(reminder.remindAt.getTime()).toBe(newStart.getTime() - 24 * 3600e3);
+        expect(reminder.scheduleVersion).toBe(2);
     });
 
-    it('DELETE: мероприятие с регистрациями (даже отмененными) удалить нельзя – 409, история сохраняется', async () => {
+    it('DELETE: удалить можно только черновик; опубликованное – 409 EVENT_NOT_DRAFT', async () => {
         const admin = await createAdmin();
-        const user = await createUser();
         const event = await createEvent();
-        const reg = (await request(app).post(`${api}/${event.id}/registrations`).set('Authorization', user.auth).send({})).body;
-        await request(app).delete(`/api/v1/registrations/${reg.id}`).set('Authorization', user.auth);
         const res = await request(app).delete(`${api}/${event.id}`).set('Authorization', admin.auth);
         expect(res.status).toBe(409);
-        expect(res.body.error.code).toBe('EVENT_HAS_REGISTRATIONS');
-        expect(await Registration.count()).toBe(1);
+        expect(res.body.error.code).toBe('EVENT_NOT_DRAFT');
     });
 
-    it('DELETE: 204 для мероприятия без регистраций, сообщения и избранное удаляются', async () => {
+    it('DELETE: 204 для черновика без регистраций, сообщения и избранное удаляются', async () => {
         const admin = await createAdmin();
         const user = await createUser();
-        const event = await createEvent();
+        const event = await createEvent({ status: 'draft' });
         await Favorite.create({ userId: user.id, eventId: event.id });
         await Message.create({ eventId: event.id, userId: user.id, author: user.name, text: 'Привет' });
 
@@ -211,13 +219,13 @@ describe('Создание, изменение и удаление (админи
 });
 
 describe('Организатор и владение мероприятиями', () => {
-    const body = () => ({ title: 'Митап организатора', type: 'meeting', startsAt: inDays(5).toISOString() });
+    const body = () => ({ title: 'Митап организатора', type: 'meeting', timezone: 'Asia/Tokyo', startsAt: inDays(5).toISOString() });
 
     it('организатор создает мероприятие и становится его владельцем; участник создать не может', async () => {
         const organizer = await createOrganizer();
         const res = await request(app).post(api).set('Authorization', organizer.auth).send(body());
         expect(res.status).toBe(201);
-        expect(res.body.organizer).toBe(organizer.id);
+        expect(res.body.organizer.id).toBe(organizer.id);
         const user = await createUser();
         const denied = await request(app).post(api).set('Authorization', user.auth).send(body());
         expect(denied.status).toBe(403);
@@ -227,10 +235,14 @@ describe('Организатор и владение мероприятиями'
     it('организатор изменяет и удаляет только свои мероприятия', async () => {
         const owner = await createOrganizer();
         const stranger = await createOrganizer();
-        const event = await createEvent({ organizerId: owner.id });
+        const event = await createEvent({ organizerId: owner.id, status: 'draft' });
         const url = `${api}/${event.id}`;
+        // чужой черновик для постороннего организатора не существует
+        expect((await request(app).patch(url).set('Authorization', stranger.auth).send({ title: 'Чужое' })).status).toBe(404);
+        await event.update({ status: 'published' });
         expect((await request(app).patch(url).set('Authorization', stranger.auth).send({ title: 'Чужое' })).status).toBe(403);
-        expect((await request(app).delete(url).set('Authorization', stranger.auth)).status).toBe(403);
+        await event.update({ status: 'draft' });
+        expect((await request(app).delete(url).set('Authorization', stranger.auth)).status).toBe(404);
         expect((await request(app).patch(url).set('Authorization', owner.auth).send({ title: 'Мое' })).body.title).toBe('Мое');
         expect((await request(app).delete(url).set('Authorization', owner.auth)).status).toBe(204);
     });
@@ -252,7 +264,7 @@ describe('Организатор и владение мероприятиями'
         expect((await request(app).patch(url).set('Authorization', owner.auth).send({ organizer: next.id })).status).toBe(403);
         expect((await request(app).patch(url).set('Authorization', admin.auth).send({ organizer: user.id })).status).toBe(422);
         const res = await request(app).patch(url).set('Authorization', admin.auth).send({ organizer: next.id });
-        expect(res.body.organizer).toBe(next.id);
+        expect(res.body.organizer.id).toBe(next.id);
         expect((await request(app).patch(url).set('Authorization', owner.auth).send({ title: 'Чужое' })).status).toBe(403);
         expect((await request(app).patch(url).set('Authorization', next.auth).send({ title: 'Новый владелец' })).status).toBe(200);
     });

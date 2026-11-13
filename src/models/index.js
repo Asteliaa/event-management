@@ -6,6 +6,7 @@ const Registration = require('./Registration');
 const Reminder = require('./Reminder');
 const Message = require('./Message');
 const Favorite = require('./Favorite');
+const Notification = require('./Notification');
 
 // Связи между таблицами (внешние ключи созданы миграцией, здесь – только для include в запросах)
 Event.belongsTo(Category, { as: 'category', foreignKey: 'categoryId' });
@@ -28,4 +29,7 @@ Message.belongsTo(User, { as: 'user', foreignKey: 'userId' });
 User.belongsToMany(Event, { through: Favorite, as: 'favorites', foreignKey: 'userId', otherKey: 'eventId' });
 Event.belongsToMany(User, { through: Favorite, as: 'favoritedBy', foreignKey: 'eventId', otherKey: 'userId' });
 
-module.exports = { sequelize, User, Category, Event, Registration, Reminder, Message, Favorite };
+Notification.belongsTo(Event, { as: 'event', foreignKey: 'eventId' });
+Notification.belongsTo(User, { as: 'user', foreignKey: 'userId' });
+
+module.exports = { sequelize, User, Category, Event, Registration, Reminder, Message, Favorite, Notification };

@@ -18,7 +18,7 @@ const DEMO_DOMAIN = 'demo.eventhub.local';
 const ADMIN_EMAIL = process.env.SEED_ADMIN_EMAIL || `admin@${DEMO_DOMAIN}`;
 const ADMIN_PASSWORD = process.env.SEED_ADMIN_PASSWORD || 'admin12345';
 const USER_PASSWORD = 'user12345';
-const TABLES = ['favorites', 'messages', 'reminders', 'registrations', 'events', 'categories', 'users'];
+const TABLES = ['notifications', 'favorites', 'messages', 'reminders', 'registrations', 'events', 'categories', 'users'];
 
 // Дата относительно текущей: через days дней в hour:00 по UTC+3.
 // Это только способ получить правдоподобное время для демо; в БД хранится момент времени (timestamptz)
@@ -119,7 +119,7 @@ async function seed() {
             title: 'Открытая лекция: как работает интернет', type: 'webinar', category: edu,
             startsAt: at(4, 17), endsAt: at(4, 18), capacity: 1000,
             description: 'Протоколы TCP/IP, DNS, HTTP и HTTPS простыми словами. Для школьников и студентов.',
-            location: { online: true }, tags: ['сети', 'http', 'образование']
+            location: { online: true, url: 'https://meet.example.com/networks' }, tags: ['сети', 'http', 'образование']
         },
         {
             title: 'Научный семинар по машинному обучению', type: 'meeting', category: edu,
@@ -147,7 +147,9 @@ async function seed() {
         }
     ];
     const events = await Event.bulkCreate(eventData.map(({ category, location, ...e }) => ({
-        ...e, categoryId: category.id, organizerId: admin.id, ...Event.locationToColumns(location)
+        // демо-данные по Минску; пояс хранится у каждого мероприятия и в коде не зашит
+        ...e, status: 'published', publishedAt: new Date(), timezone: 'Europe/Minsk',
+        categoryId: category.id, organizerId: admin.id, ...Event.locationToColumns(location)
     })), { returning: true });
     // часть мероприятий принадлежит демо-организатору (облегченная роль: управляет только своими)
     await Event.update({ organizerId: organizer.id }, { where: { id: events.filter((_, i) => i % 2 === 0).map((e) => e.id) } });
@@ -169,7 +171,7 @@ async function seed() {
             await reminderService.createAuto(registration, event, transaction);
         }
         // посещенное прошедшее мероприятие
-        await Registration.create({ userId: anna.id, eventId: events[11].id, tickets: 1, status: 'attended' }, { transaction });
+        await Registration.create({ userId: anna.id, eventId: events[11].id, status: 'attended' }, { transaction });
         // счетчик мест = сумма билетов активных регистраций
         await sequelize.query(
             `UPDATE events e SET seats_taken = r.seats
@@ -178,6 +180,12 @@ async function seed() {
              WHERE e.id = r.event_id`,
             { transaction }
         );
+    });
+
+    // черновик организатора: еще без даты и места (черновик может быть неполным), в каталоге не виден
+    await Event.create({
+        title: 'Черновик: воркшоп по доступности интерфейсов', type: 'meeting', timezone: 'Europe/Minsk',
+        description: 'Демо. Черновик, который организатор еще заполняет.', categoryId: design.id, organizerId: organizer.id
     });
 
     await Favorite.bulkCreate([{ userId: anna.id, eventId: events[3].id }, { userId: anna.id, eventId: events[5].id }]);

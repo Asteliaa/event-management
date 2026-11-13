@@ -9,6 +9,4 @@ const remove = async (req, res) => {
     res.status(204).send();
 };
 
-const readAll = async (req, res) => res.json({ updated: await reminderService.markAllRead(req.user.id) });
-
-module.exports = { list, create, update, remove, readAll };
+module.exports = { list, create, update, remove };

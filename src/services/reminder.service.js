@@ -3,18 +3,25 @@ const config = require('../config');
 const { sequelize, Reminder, Event, Registration } = require('../models');
 const ApiError = require('../utils/ApiError');
 
+// Напоминания привязаны к регистрации и к версии расписания мероприятия (schedule_version).
+// - Перенос начала/окончания увеличивает версию: напоминания пересчитываются; если новое время
+//   уже прошло – статус skipped, если отправленное снова в будущем – оно ждет отправки по новой версии.
+// - Смена места, описания и т. п. версию не меняет и напоминаний не касается.
+// - Ключ доставки reminder:<id>:v<версия> (notifications.dedup_key): одно напоминание
+//   для одной версии расписания доставляется не больше одного раза.
+
 const remindAtFor = (event, offsetMinutes) => new Date(new Date(event.startsAt).getTime() - offsetMinutes * 60_000);
 
 const includeEvent = {
     association: 'event',
-    attributes: ['id', 'title', 'startsAt', 'type', 'locationCity', 'locationVenue', 'locationOnline', 'locationUrl', 'coverUrl', 'status']
+    attributes: ['id', 'title', 'startsAt', 'endsAt', 'timezone', 'type', 'locationCity', 'locationVenue', 'locationOnline', 'coverUrl', 'status']
 };
 
 const withEvent = (id, transaction) => Reminder.findByPk(id, { include: [includeEvent], transaction });
 
 // Автоматическое напоминание при регистрации: за сутки до начала,
 // а если до начала меньше суток – за час (если и это время прошло, напоминание не создается).
-// Вызывается внутри транзакции регистрации; напоминание относится к этой регистрации
+// Вызывается внутри транзакции регистрации (строка мероприятия уже заблокирована)
 const createAuto = async (registration, event, transaction) => {
     const now = Date.now();
     const offset = [config.reminders.defaultOffsetMinutes, 60]
@@ -26,46 +33,49 @@ const createAuto = async (registration, event, transaction) => {
         registrationId: registration.id,
         offsetMinutes: offset,
         remindAt: remindAtFor(event, offset),
+        scheduleVersion: event.scheduleVersion,
         kind: 'auto'
     }, { transaction });
 };
 
-// Активная регистрация пользователя на мероприятие: свои напоминания создаются только при ней
-const activeRegistration = (userId, eventId, transaction) => Registration.findOne({
-    where: { userId, eventId, status: { [Op.ne]: 'cancelled' } }, transaction
-});
-
-const create = async (userId, { event: eventId, offsetMinutes }) => {
-    const event = await Event.findByPk(eventId);
-    if (!event) throw ApiError.notFound('Мероприятие не найдено');
-    const registration = await activeRegistration(userId, eventId);
-    if (!registration) {
-        throw ApiError.conflict('Напоминания доступны после регистрации на мероприятие', 'REGISTRATION_REQUIRED');
-    }
-    if (event.status === 'cancelled') throw ApiError.conflict('Мероприятие отменено', 'EVENT_CANCELLED');
-    const remindAt = remindAtFor(event, offsetMinutes);
-    if (remindAt <= new Date()) {
-        throw ApiError.badRequest('Время напоминания уже прошло, выберите меньший интервал');
-    }
-    let reminder;
-    try {
-        reminder = await Reminder.create({ userId, eventId, registrationId: registration.id, offsetMinutes, remindAt });
-    } catch (err) {
-        if (err.name === 'SequelizeUniqueConstraintError') {
-            throw ApiError.conflict('Такое напоминание уже есть', 'REMINDER_EXISTS');
-        }
-        throw err;
-    }
-    return withEvent(reminder.id);
+const uniqueError = (err) => {
+    if (err.name === 'SequelizeUniqueConstraintError') return ApiError.conflict('Такое напоминание уже есть', 'REMINDER_EXISTS');
+    return err;
 };
 
-// Без фильтра – ожидающие и отправленные (отмененные и пропущенные – только по status)
-const list = async (userId, { status, unread } = {}) => {
+// Свое напоминание – только при активной регистрации. Строка мероприятия блокируется FOR SHARE:
+// одновременный перенос дождется создания напоминания и пересчитает его вместе с остальными
+const create = async (userId, { event: eventId, offsetMinutes }) => {
+    const id = await sequelize.transaction(async (transaction) => {
+        const event = await Event.findByPk(eventId, { transaction, lock: transaction.LOCK.SHARE });
+        if (!event || event.status === 'draft') throw ApiError.notFound('Мероприятие не найдено');
+        const registration = await Registration.findOne({
+            where: { userId, eventId, status: { [Op.ne]: 'cancelled' } }, transaction
+        });
+        if (!registration) {
+            throw ApiError.conflict('Напоминания доступны после регистрации на мероприятие', 'REGISTRATION_REQUIRED');
+        }
+        if (event.status === 'cancelled') throw ApiError.conflict('Мероприятие отменено', 'EVENT_CANCELLED');
+        const remindAt = remindAtFor(event, offsetMinutes);
+        if (remindAt <= new Date()) {
+            throw ApiError.badRequest('Время напоминания уже прошло, выберите меньший интервал');
+        }
+        try {
+            const reminder = await sequelize.transaction({ transaction }, (t) => Reminder.create({
+                userId, eventId, registrationId: registration.id, offsetMinutes, remindAt, scheduleVersion: event.scheduleVersion
+            }, { transaction: t }));
+            return reminder.id;
+        } catch (err) {
+            throw uniqueError(err);
+        }
+    });
+    return withEvent(id);
+};
+
+// Без фильтра – ожидающие и отправленные (отмененные и пропущенные – только по status).
+// Отметка о прочтении теперь у уведомлений (/notifications)
+const list = async (userId, { status } = {}) => {
     const where = { userId, status: status || ['pending', 'sent'] };
-    if (unread !== undefined) {
-        where.status = 'sent';
-        where.readAt = unread ? null : { [Op.ne]: null };
-    }
     const direction = status === 'pending' ? 'ASC' : 'DESC';
     return Reminder.findAll({
         where,
@@ -81,23 +91,17 @@ const findOwn = async (userId, id) => {
     return reminder;
 };
 
-const update = async (userId, id, { offsetMinutes, read }) => {
+const update = async (userId, id, { offsetMinutes }) => {
     const reminder = await findOwn(userId, id);
-    if (offsetMinutes !== undefined) {
-        if (reminder.status !== 'pending') throw ApiError.badRequest('Изменить можно только ожидающее напоминание');
-        const event = await Event.findByPk(reminder.eventId);
-        const remindAt = remindAtFor(event, offsetMinutes);
-        if (remindAt <= new Date()) throw ApiError.badRequest('Время напоминания уже прошло');
-        Object.assign(reminder, { offsetMinutes, remindAt, kind: 'custom' });
-    }
-    if (read !== undefined) reminder.readAt = read ? new Date() : null;
+    if (reminder.status !== 'pending') throw ApiError.badRequest('Изменить можно только ожидающее напоминание');
+    const event = await Event.findByPk(reminder.eventId);
+    const remindAt = remindAtFor(event, offsetMinutes);
+    if (remindAt <= new Date()) throw ApiError.badRequest('Время напоминания уже прошло');
+    Object.assign(reminder, { offsetMinutes, remindAt, kind: 'custom' });
     try {
         await reminder.save();
     } catch (err) {
-        if (err.name === 'SequelizeUniqueConstraintError') {
-            throw ApiError.conflict('Такое напоминание уже есть', 'REMINDER_EXISTS');
-        }
-        throw err;
+        throw uniqueError(err);
     }
     return withEvent(reminder.id);
 };
@@ -112,19 +116,23 @@ const remove = async (userId, id) => {
     }
 };
 
-const markAllRead = async (userId) => {
-    const [count] = await Reminder.update(
-        { readAt: new Date() },
-        { where: { userId, status: 'sent', readAt: null } }
-    );
-    return count;
-};
-
-// Дата мероприятия изменилась – пересчитываем время неотправленных напоминаний одним запросом
+// Перенос мероприятия (новая версия расписания): напоминания активных регистраций пересчитываются.
+// Время в будущем – ждет отправки (в том числе ранее отправленное: по новому расписанию оно нужно снова),
+// время в прошлом – ожидавшее становится skipped, отправленное остается отправленным.
+// Вызывается в транзакции изменения мероприятия, строка мероприятия заблокирована
 const rescheduleForEvent = (event, transaction) => sequelize.query(
-    `UPDATE reminders SET remind_at = :startsAt::timestamptz - make_interval(mins => offset_minutes), updated_at = now()
-     WHERE event_id = :eventId AND status = 'pending'`,
-    { replacements: { startsAt: event.startsAt, eventId: event.id }, transaction }
+    `UPDATE reminders r SET
+         remind_at = :startsAt::timestamptz - make_interval(mins => r.offset_minutes),
+         schedule_version = :version,
+         status = CASE
+             WHEN :startsAt::timestamptz - make_interval(mins => r.offset_minutes) > now() THEN 'pending'
+             WHEN r.status = 'pending' THEN 'skipped'
+             ELSE r.status END,
+         updated_at = now()
+     FROM registrations reg
+     WHERE r.registration_id = reg.id AND reg.status <> 'cancelled'
+       AND r.event_id = :eventId AND r.status IN ('pending', 'sent', 'skipped')`,
+    { replacements: { startsAt: event.startsAt, version: event.scheduleVersion, eventId: event.id }, transaction }
 );
 
 // Отмена ожидающих напоминаний регистрации (отмена участия и т. п.)
@@ -133,36 +141,55 @@ const cancelForRegistration = (registrationId, reason, transaction) => Reminder.
     { where: { registrationId, status: 'pending' }, transaction }
 );
 
-// Выбирает наступившие напоминания и переводит их в sent одним запросом.
-// FOR UPDATE SKIP LOCKED: если запущено несколько экземпляров сервера, одно напоминание
-// заберет только один из них, поэтому оно не будет отправлено дважды.
-// Напоминания отмененных мероприятий не отправляются и остаются в статусе pending
-// (полноценные уведомления об отмене – отдельная задача следующего этапа)
-const takeDue = async (now = new Date(), batch = 100) => {
-    const rows = await sequelize.query(
-        `UPDATE reminders r SET status = 'sent', sent_at = :now, updated_at = now()
-         WHERE r.id IN (
-             SELECT rm.id FROM reminders rm
-             JOIN events e ON e.id = rm.event_id
-             JOIN registrations reg ON reg.id = rm.registration_id
-             WHERE rm.status = 'pending' AND rm.remind_at <= :now AND e.status = 'published'
-               AND reg.status <> 'cancelled'
-             ORDER BY rm.remind_at, rm.id
-             LIMIT :batch
-             FOR UPDATE OF rm SKIP LOCKED
-         )
-         RETURNING r.id`,
-        { replacements: { now, batch }, type: QueryTypes.SELECT }
+// Отмена мероприятия: ожидающие напоминания всех участников отменяются
+const cancelForEvent = (eventId, transaction) => Reminder.update(
+    { status: 'cancelled', cancelReason: 'event_cancelled' },
+    { where: { eventId, status: 'pending' }, transaction }
+);
+
+// Выбор наступивших напоминаний, запись уведомлений и отметка «отправлено» – одна транзакция.
+// Блокировки:
+// - FOR UPDATE OF rm SKIP LOCKED: несколько экземпляров сервера не возьмут одно напоминание;
+// - FOR SHARE OF e, reg SKIP LOCKED: если мероприятие или регистрация сейчас изменяются
+//   (перенос, отмена мероприятия, отмена участия держат FOR UPDATE), напоминание пропускается до
+//   следующего прохода и затем проверяется по зафиксированному состоянию.
+// Условия: мероприятие опубликовано, регистрация активна, версия расписания совпадает.
+// Возвращает id созданных уведомлений (отправка в Socket.IO – после фиксации)
+const takeDue = (now = new Date(), batch = 100) => sequelize.transaction(async (transaction) => {
+    const due = await sequelize.query(
+        `SELECT rm.id, rm.user_id, rm.event_id, rm.registration_id, rm.offset_minutes, rm.schedule_version
+         FROM reminders rm
+         JOIN events e ON e.id = rm.event_id
+         JOIN registrations reg ON reg.id = rm.registration_id
+         WHERE rm.status = 'pending' AND rm.remind_at <= :now
+           AND e.status = 'published' AND reg.status <> 'cancelled'
+           AND rm.schedule_version = e.schedule_version
+         ORDER BY rm.remind_at, rm.id
+         LIMIT :batch
+         FOR UPDATE OF rm SKIP LOCKED
+         FOR SHARE OF e, reg SKIP LOCKED`,
+        { replacements: { now, batch }, type: QueryTypes.SELECT, transaction }
     );
-    if (!rows.length) return [];
-    return Reminder.findAll({
-        where: { id: rows.map((r) => r.id) },
-        include: [includeEvent],
-        order: [['remindAt', 'ASC'], ['id', 'ASC']]
-    });
-};
+    if (!due.length) return [];
+    await sequelize.query(
+        `UPDATE reminders SET status = 'sent', sent_at = :now, updated_at = now() WHERE id IN (:ids)`,
+        { replacements: { now, ids: due.map((r) => r.id) }, transaction }
+    );
+    const rows = await sequelize.query(
+        `INSERT INTO notifications (user_id, type, event_id, registration_id, reminder_id, payload, dedup_key)
+         SELECT d.user_id, 'reminder', d.event_id, d.registration_id, d.id,
+                jsonb_build_object('offsetMinutes', d.offset_minutes, 'scheduleVersion', d.schedule_version),
+                'reminder:' || d.id || ':v' || d.schedule_version
+         FROM jsonb_to_recordset(CAST(:due AS jsonb))
+              AS d(id bigint, user_id bigint, event_id bigint, registration_id bigint, offset_minutes int, schedule_version int)
+         ON CONFLICT (user_id, dedup_key) DO NOTHING
+         RETURNING id`,
+        { replacements: { due: JSON.stringify(due) }, type: QueryTypes.SELECT, transaction }
+    );
+    return rows.map((r) => r.id);
+});
 
 module.exports = {
-    createAuto, create, list, update, remove, markAllRead,
-    rescheduleForEvent, cancelForRegistration, takeDue, remindAtFor
+    createAuto, create, list, update, remove,
+    rescheduleForEvent, cancelForRegistration, cancelForEvent, takeDue, remindAtFor
 };

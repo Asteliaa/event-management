@@ -30,10 +30,11 @@ const seedStageA = async () => {
         (1, 1, 1440, now() + interval '9 days', 'auto', 'pending'),
         (2, 2, 60, now() + interval '5 days' - interval '1 hour', 'custom', 'pending'),
         (2, 1, 60, now() - interval '1 day', 'custom', 'sent')`);
+    await q(`UPDATE reminders SET sent_at = now() - interval '1 day', read_at = now() WHERE status = 'sent'`);
 };
 
-describe('Миграция Б1 на данных этапа А', () => {
-    it('мультибилетные регистрации: одна регистрация – одно место, число билетов сохранено, откат восстанавливает', async () => {
+describe('Миграции этапа Б на данных этапа А', () => {
+    it('Б1–Б2: мультибилетные регистрации: одна регистрация – одно место, число билетов сохранено, откат восстанавливает', async () => {
         await migrator.down({ to: B1 });
         await seedStageA();
         await migrator.up();
@@ -56,12 +57,21 @@ describe('Миграция Б1 на данных этапа А', () => {
                 { user_id: 2, event_id: 1, registration_id: 2, status: 'sent', cancel_reason: null }
             ]);
 
+        // Б2: пояс существующих мероприятий, отметка публикации, история отправленных напоминаний
+        expect(await select(`SELECT status, timezone, schedule_version, published_at IS NOT NULL AS published FROM events ORDER BY id`))
+            .toEqual([
+                { status: 'published', timezone: 'Europe/Minsk', schedule_version: 1, published: true },
+                { status: 'published', timezone: 'Europe/Minsk', schedule_version: 1, published: true }
+            ]);
+        expect(await select(`SELECT user_id::int, type, reminder_id::int, dedup_key, read_at IS NOT NULL AS read FROM notifications`))
+            .toEqual([{ user_id: 2, type: 'reminder', reminder_id: 3, dedup_key: 'reminder:3:v1', read: true }]);
+
         // откат возвращает прежний формат без потерь
         await migrator.down({ to: B1 });
         expect(await select('SELECT tickets FROM registrations ORDER BY id')).toEqual([{ tickets: 3 }, { tickets: 1 }, { tickets: 2 }]);
         expect(await select('SELECT seats_taken FROM events ORDER BY id')).toEqual([{ seats_taken: 4 }, { seats_taken: 0 }]);
-        expect(await select(`SELECT status FROM reminders ORDER BY id`))
-            .toEqual([{ status: 'pending' }, { status: 'pending' }, { status: 'sent' }]);
+        expect(await select(`SELECT status, read_at IS NOT NULL AS read FROM reminders ORDER BY id`))
+            .toEqual([{ status: 'pending', read: false }, { status: 'pending', read: false }, { status: 'sent', read: true }]);
         await migrator.up();
     });
 });

@@ -6,7 +6,7 @@ import { useDocumentTitle } from '../../hooks/useDocumentTitle.js';
 import { eventsApi } from '../../api/index.js';
 import { EmptyState, ErrorState, Modal, Pagination, Spinner } from '../../components/ui/index.jsx';
 import ParticipantsModal from '../../components/events/ParticipantsModal.jsx';
-import { TYPE_LABELS, formatShort, formatTime } from '../../utils/format.js';
+import { EVENT_STATUS_LABELS, TYPE_LABELS, formatShort, formatTime } from '../../utils/format.js';
 
 function StatsModal({ event, onClose }) {
   const { data, loading, error } = useFetch(() => eventsApi.stats(event.id), [event.id]);
@@ -56,9 +56,9 @@ export default function OrganizerEvents() {
                 <tr key={e.id} className={e.status === 'cancelled' ? 'is-muted' : ''}>
                   <td>
                     <b>{e.title}</b>
-                    <small className="muted">{TYPE_LABELS[e.type]}{e.status === 'cancelled' ? ', отменено' : ''}</small>
+                    <small className="muted">{TYPE_LABELS[e.type]}, {EVENT_STATUS_LABELS[e.status].toLowerCase()}</small>
                   </td>
-                  <td className="hide-mobile nowrap">{formatShort(e.startsAt)}, {formatTime(e.startsAt)}</td>
+                  <td className="hide-mobile nowrap">{e.startsAt ? `${formatShort(e.startsAt, e.timezone)}, ${formatTime(e.startsAt, e.timezone)}` : 'без даты'}</td>
                   <td className="nowrap">
                     {e.registrations.active}{e.capacity ? ` / ${e.capacity}` : ''}
                     {e.registrations.cancelled > 0 && <small className="muted">отменено {e.registrations.cancelled}</small>}

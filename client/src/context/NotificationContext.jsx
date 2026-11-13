@@ -1,13 +1,15 @@
 import { createContext, useCallback, useContext, useEffect, useMemo, useReducer } from 'react';
-import { remindersApi } from '../api/index.js';
+import { notificationsApi } from '../api/index.js';
+import { notificationText } from '../utils/notifications.js';
 import { useAuth } from './AuthContext.jsx';
 import { useSocket } from './SocketContext.jsx';
 
 const NotificationContext = createContext(null);
 
 // Глобальное состояние уведомлений на useReducer:
-// toasts – всплывающие сообщения, inbox – отправленные напоминания (центр уведомлений)
-const initialState = { toasts: [], inbox: [] };
+// toasts – всплывающие сообщения, inbox – последние уведомления из истории (сервер хранит их в БД),
+// unread – число непрочитанных по данным сервера
+const initialState = { toasts: [], inbox: [], unread: 0 };
 let nextId = 1;
 
 function reducer(state, action) {
@@ -17,13 +19,20 @@ function reducer(state, action) {
     case 'TOAST_REMOVE':
       return { ...state, toasts: state.toasts.filter((t) => t.id !== action.id) };
     case 'INBOX_SET':
-      return { ...state, inbox: action.items };
+      return { ...state, inbox: action.items, unread: action.unread };
     case 'INBOX_ADD':
-      return { ...state, inbox: [action.item, ...state.inbox.filter((i) => i.id !== action.item.id)] };
-    case 'INBOX_READ':
-      return { ...state, inbox: state.inbox.map((i) => (i.id === action.id ? { ...i, readAt: new Date().toISOString() } : i)) };
+      if (state.inbox.some((i) => i.id === action.item.id)) return state;
+      return { ...state, inbox: [action.item, ...state.inbox].slice(0, 20), unread: state.unread + (action.item.readAt ? 0 : 1) };
+    case 'INBOX_READ': {
+      const wasUnread = state.inbox.some((i) => i.id === action.id && !i.readAt);
+      return {
+        ...state,
+        inbox: state.inbox.map((i) => (i.id === action.id ? { ...i, readAt: i.readAt || new Date().toISOString() } : i)),
+        unread: Math.max(state.unread - (wasUnread ? 1 : 0), 0),
+      };
+    }
     case 'INBOX_READ_ALL':
-      return { ...state, inbox: state.inbox.map((i) => ({ ...i, readAt: i.readAt || new Date().toISOString() })) };
+      return { ...state, inbox: state.inbox.map((i) => ({ ...i, readAt: i.readAt || new Date().toISOString() })), unread: 0 };
     case 'RESET':
       return initialState;
     default:
@@ -42,24 +51,28 @@ export function NotificationProvider({ children }) {
     setTimeout(() => dispatch({ type: 'TOAST_REMOVE', id }), options.duration || 5000);
   }, []);
 
-  // Загрузка уже отправленных напоминаний при входе
+  // Последние уведомления из истории – при входе и после переподключения сокета
+  // (пока соединения не было, уведомления копились на сервере)
+  const loadInbox = useCallback(() => notificationsApi.list({ limit: 20 })
+    .then((res) => dispatch({ type: 'INBOX_SET', items: res.data, unread: res.meta.unread }))
+    .catch(() => {}), []);
+
   useEffect(() => {
     if (!isAuthenticated) {
       dispatch({ type: 'RESET' });
       return;
     }
-    remindersApi.list({ status: 'sent' })
-      .then((items) => dispatch({ type: 'INBOX_SET', items }))
-      .catch(() => {});
-  }, [isAuthenticated]);
+    loadInbox();
+  }, [isAuthenticated, loadInbox]);
 
   // События сервера в реальном времени
   useEffect(() => {
     if (!socket) return undefined;
     const handlers = {
-      'reminder:due': (reminder) => {
-        dispatch({ type: 'INBOX_ADD', item: reminder });
-        notify(`Напоминание: «${reminder.event?.title}» начнется скоро`, 'reminder', { duration: 10000, link: `/events/${reminder.event?.id}` });
+      connect: loadInbox,
+      'notification:new': (item) => {
+        dispatch({ type: 'INBOX_ADD', item });
+        notify(notificationText(item), item.type === 'reminder' ? 'reminder' : 'info', { duration: 10000, link: item.event && `/events/${item.event.id}` });
       },
       'event:created': ({ event, by }) => {
         if (by !== user?.name) notify(`Новое мероприятие: «${event.title}»`, 'info', { link: `/events/${event.id}` });
@@ -70,21 +83,22 @@ export function NotificationProvider({ children }) {
     };
     Object.entries(handlers).forEach(([e, fn]) => socket.on(e, fn));
     return () => Object.entries(handlers).forEach(([e, fn]) => socket.off(e, fn));
-  }, [socket, notify, user]);
+  }, [socket, notify, user, loadInbox]);
 
   const value = useMemo(() => ({
     toasts: state.toasts,
     inbox: state.inbox,
-    unreadCount: state.inbox.filter((i) => !i.readAt).length,
+    unreadCount: state.unread,
+    reloadInbox: loadInbox,
     notify,
     dismiss: (id) => dispatch({ type: 'TOAST_REMOVE', id }),
     markRead: (id) => {
       dispatch({ type: 'INBOX_READ', id });
-      remindersApi.update(id, { read: true }).catch(() => {});
+      notificationsApi.setRead(id, true).catch(() => {});
     },
     markAllRead: () => {
       dispatch({ type: 'INBOX_READ_ALL' });
-      remindersApi.readAll().catch(() => {});
+      notificationsApi.readAll().catch(() => {});
     },
   }), [state, notify]);
 

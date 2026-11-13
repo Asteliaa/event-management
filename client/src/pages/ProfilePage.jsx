@@ -91,7 +91,7 @@ export function MyFavorites() {
 
 export function MyReminders() {
   useDocumentTitle('Напоминания');
-  const { notify, markAllRead } = useNotifications();
+  const { notify } = useNotifications();
   const { data, loading, error, reload, setData } = useFetch(() => remindersApi.list(), []);
 
   async function remove(id) {
@@ -121,7 +121,7 @@ export function MyReminders() {
               <span className="reminder__icon"><BellRing size={16} /></span>
               <span className="reminder__text">
                 <Link to={`/events/${r.event.id}`}><b>{r.event.title}</b></Link>
-                <small>{formatOffset(r.offsetMinutes)} до начала, придет {formatDateTime(r.remindAt)}{r.kind === 'auto' && ' (автоматически)'}</small>
+                <small>{formatOffset(r.offsetMinutes)} до начала, придет {formatDateTime(r.remindAt)} (по вашему времени){r.kind === 'auto' && ', автоматически'}</small>
               </span>
               <button type="button" className="icon-btn icon-btn--sm" onClick={() => remove(r.id)} aria-label="Удалить"><Trash2 size={15} /></button>
             </li>
@@ -131,20 +131,16 @@ export function MyReminders() {
       <div className="card panel">
         <div className="panel__title-row">
           <h3 className="panel__title"><Check size={18} /> Полученные ({sent.length})</h3>
-          {sent.some((r) => !r.readAt) && (
-            <button type="button" className="link-btn" onClick={() => { markAllRead(); setData((l) => l.map((r) => ({ ...r, readAt: r.readAt || new Date().toISOString() }))); }}>
-              Прочитать все
-            </button>
-          )}
+          <Link to="/notifications" className="link-btn">Все уведомления</Link>
         </div>
         {sent.length === 0 && <p className="muted">Здесь появятся напоминания, когда наступит их время.</p>}
         <ul className="reminders">
           {sent.map((r) => (
-            <li key={r.id} className={`reminder reminder--sent ${r.readAt ? '' : 'is-unread'}`}>
+            <li key={r.id} className="reminder reminder--sent">
               <span className="reminder__icon"><Check size={16} /></span>
               <span className="reminder__text">
                 <Link to={`/events/${r.event.id}`}><b>{r.event.title}</b></Link>
-                <small>Отправлено {formatDateTime(r.sentAt)}, начало {formatDateTime(r.event.startsAt)}</small>
+                <small>Отправлено {formatDateTime(r.sentAt)}, начало {formatDateTime(r.event.startsAt, r.event.timezone)}</small>
               </span>
             </li>
           ))}

@@ -9,21 +9,22 @@ import { getErrorMessage } from '../../api/client.js';
 import { useNotifications } from '../../context/NotificationContext.jsx';
 import { ConfirmDialog, ErrorState, Pagination, Spinner } from '../../components/ui/index.jsx';
 import ParticipantsModal from '../../components/events/ParticipantsModal.jsx';
-import { TYPE_LABELS, formatShort, formatTime } from '../../utils/format.js';
+import { EVENT_STATUS_LABELS, TYPE_LABELS, formatShort, formatTime } from '../../utils/format.js';
 
 export default function AdminEvents() {
   useDocumentTitle('Мероприятия');
   const { notify } = useNotifications();
   const [search, setSearch] = useState('');
-  const [when, setWhen] = useState('all');
+  const [status, setStatus] = useState('');
   const [page, setPage] = useState(1);
   const debounced = useDebounce(search);
   const [toDelete, setToDelete] = useState(null);
   const [participants, setParticipants] = useState(null);
   const [busy, setBusy] = useState(false);
   const { data, loading, error, reload } = useFetch(
-    (signal) => eventsApi.list({ search: debounced || undefined, when, sort: '-date', page, limit: 10 }, signal),
-    [debounced, when, page],
+    // все мероприятия, включая черновики и отмененные (каталог показывает только опубликованные)
+    (signal) => eventsApi.managed({ all: true, search: debounced || undefined, status: status || undefined, page, limit: 10 }, signal),
+    [debounced, status, page],
   );
 
   async function remove() {
@@ -50,8 +51,9 @@ export default function AdminEvents() {
         <div className="filters__search"><Search size={18} />
           <input type="search" placeholder="Поиск" value={search} onChange={(e) => { setSearch(e.target.value); setPage(1); }} aria-label="Поиск" />
         </div>
-        <select value={when} onChange={(e) => { setWhen(e.target.value); setPage(1); }} aria-label="Период">
-          <option value="all">Все</option><option value="upcoming">Предстоящие</option><option value="past">Прошедшие</option>
+        <select value={status} onChange={(e) => { setStatus(e.target.value); setPage(1); }} aria-label="Статус">
+          <option value="">Все статусы</option>
+          {Object.entries(EVENT_STATUS_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
         </select>
       </div>
       {error && <ErrorState message={error} onRetry={reload} />}
@@ -65,17 +67,17 @@ export default function AdminEvents() {
                 <tr key={e.id} className={e.status === 'cancelled' ? 'is-muted' : ''}>
                   <td>
                     <b>{e.title}</b>
-                    {e.category && <small className="muted"><span className="color-dot" style={{ background: e.category.color }} /> {e.category.name}</small>}
-                    <small className="muted only-mobile">{TYPE_LABELS[e.type]}, {formatShort(e.startsAt)}, {formatTime(e.startsAt)}, мест {e.seatsTaken}{e.capacity ? ` / ${e.capacity}` : ''}</small>
+                    <small className="muted">{EVENT_STATUS_LABELS[e.status]}{e.organizer?.name ? `, ${e.organizer.name}` : ''}</small>
+                    <small className="muted only-mobile">{TYPE_LABELS[e.type]}, {e.startsAt ? `${formatShort(e.startsAt, e.timezone)}, ${formatTime(e.startsAt, e.timezone)}` : 'без даты'}, мест {e.seatsTaken}{e.capacity ? ` / ${e.capacity}` : ''}</small>
                   </td>
                   <td className="hide-mobile">{TYPE_LABELS[e.type]}</td>
-                  <td className="hide-mobile nowrap">{formatShort(e.startsAt)}, {formatTime(e.startsAt)}</td>
+                  <td className="hide-mobile nowrap">{e.startsAt ? `${formatShort(e.startsAt, e.timezone)}, ${formatTime(e.startsAt, e.timezone)}` : '—'}</td>
                   <td className="hide-mobile nowrap">{e.seatsTaken}{e.capacity ? ` / ${e.capacity}` : ''}</td>
                   <td className="table__actions">
                     <Link to={`/events/${e.id}`} className="icon-btn icon-btn--sm" title="Открыть"><Eye size={16} /></Link>
                     <button type="button" className="icon-btn icon-btn--sm" title="Участники" onClick={() => setParticipants(e)}><Users size={16} /></button>
                     <Link to={`/admin/events/${e.id}/edit`} className="icon-btn icon-btn--sm" title="Редактировать"><Pencil size={16} /></Link>
-                    <button type="button" className="icon-btn icon-btn--sm icon-btn--danger" title="Удалить" onClick={() => setToDelete(e)}><Trash2 size={16} /></button>
+                    {e.status === 'draft' && <button type="button" className="icon-btn icon-btn--sm icon-btn--danger" title="Удалить черновик" onClick={() => setToDelete(e)}><Trash2 size={16} /></button>}
                   </td>
                 </tr>
               ))}
@@ -87,8 +89,8 @@ export default function AdminEvents() {
       {data && <Pagination page={data.meta.page} pages={data.meta.pages} onChange={setPage} />}
       {toDelete && (
         <ConfirmDialog
-          title="Удалить мероприятие?"
-          text={`«${toDelete.title}» будет удалено вместе с чатом. Мероприятие, на которое уже регистрировались, удалить нельзя – его можно отменить.`}
+          title="Удалить черновик?"
+          text={`«${toDelete.title}» будет удален. Опубликованные мероприятия не удаляются – их отменяют на странице мероприятия.`}
           confirmLabel="Удалить"
           danger
           busy={busy}

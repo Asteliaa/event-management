@@ -1,18 +1,24 @@
 import { Link } from 'react-router';
 import { Clock, MapPin, Video } from 'lucide-react';
-import { TYPE_LABELS, formatTime, placeOf } from '../../utils/format.js';
-
-const monthFmt = new Intl.DateTimeFormat('ru-RU', { month: 'short' });
-const weekdayFmt = new Intl.DateTimeFormat('ru-RU', { weekday: 'short' });
+import { TYPE_LABELS, formatDay, formatMonth, formatTime, formatWeekday, placeOf } from '../../utils/format.js';
 
 // Дата в виде листка календаря: месяц, число и день недели
-export function DateBlock({ date, size = 'md' }) {
-  const d = new Date(date);
+// Дата – по поясу мероприятия (tz); у черновика даты может не быть
+export function DateBlock({ date, tz, size = 'md' }) {
+  if (!date) {
+    return (
+      <span className={`date-block date-block--${size}`}>
+        <span className="date-block__month">дата</span>
+        <span className="date-block__day">—</span>
+        <span className="date-block__wd">не задана</span>
+      </span>
+    );
+  }
   return (
     <span className={`date-block date-block--${size}`}>
-      <span className="date-block__month">{monthFmt.format(d).replace('.', '')}</span>
-      <span className="date-block__day">{d.getDate()}</span>
-      <span className="date-block__wd">{weekdayFmt.format(d)}</span>
+      <span className="date-block__month">{formatMonth(date, tz).replace('.', '')}</span>
+      <span className="date-block__day">{formatDay(date, tz)}</span>
+      <span className="date-block__wd">{formatWeekday(date, tz)}</span>
     </span>
   );
 }
@@ -40,7 +46,7 @@ export function CategoryMark({ category }) {
 export default function EventRow({ event, compact = false }) {
   return (
     <Link to={`/events/${event.id}`} className={`event-row ${compact ? 'event-row--compact' : ''} ${event.status === 'cancelled' ? 'is-cancelled' : ''}`}>
-      <DateBlock date={event.startsAt} size={compact ? 'sm' : 'md'} />
+      <DateBlock date={event.startsAt} tz={event.timezone} size={compact ? 'sm' : 'md'} />
       <span className="event-row__main">
         <span className="event-row__kicker">
           <span className={`type type--${event.type}`}>{TYPE_LABELS[event.type]}</span>
@@ -49,7 +55,7 @@ export default function EventRow({ event, compact = false }) {
         </span>
         <span className="event-row__title">{event.title}</span>
         <span className="event-row__place">
-          <span><Clock size={14} /> {formatTime(event.startsAt)}</span>
+          {event.startsAt && <span><Clock size={14} /> {formatTime(event.startsAt, event.timezone)}</span>}
           <span>{event.location?.online ? <Video size={14} /> : <MapPin size={14} />} {placeOf(event)}</span>
         </span>
       </span>

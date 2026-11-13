@@ -1,5 +1,6 @@
 const { Op, QueryTypes } = require('sequelize');
-const { sequelize, Event, Registration, Reminder, Favorite } = require('../models');
+const { sequelize, Event, Registration, Reminder, Favorite, User } = require('../models');
+const { assertCanManageEvent, isAdmin } = require('./access');
 const ApiError = require('../utils/ApiError');
 const { paginate, pageResult, likePattern } = require('../utils/pagination');
 const reminderService = require('./reminder.service');
@@ -89,6 +90,7 @@ const toAttributes = (data) => {
     for (const [key, value] of Object.entries(data)) {
         if (key === 'location') Object.assign(attrs, Event.locationToColumns(value));
         else if (key === 'category') attrs.categoryId = value;
+        else if (key === 'organizer') attrs.organizerId = value;
         // null в запросе – очистить необязательное поле; у полей со значением по умолчанию – вернуть его
         else if (value === null && key === 'description') attrs.description = '';
         else if (value === null && key === 'coverUrl') attrs.coverUrl = '';
@@ -98,17 +100,37 @@ const toAttributes = (data) => {
     return attrs;
 };
 
+// Новый владелец мероприятия (передает администратор): организатор или администратор
+const assertOrganizerCandidate = async (userId, transaction) => {
+    const owner = await User.findByPk(userId, { transaction, attributes: ['id', 'role', 'blocked'] });
+    if (!owner || !['organizer', 'admin'].includes(owner.role)) {
+        throw new ApiError(422, 'Ошибка валидации данных', {
+            details: [{ field: 'body.organizer', message: 'Владельцем может быть только организатор или администратор' }]
+        });
+    }
+};
+
+const assertOrganizerChange = async (data, user, transaction) => {
+    if (data.organizer === undefined) return;
+    if (!isAdmin(user)) throw ApiError.forbidden('Передать мероприятие другому организатору может только администратор');
+    await assertOrganizerCandidate(data.organizer, transaction);
+};
+
+// Создает организатор или администратор; владелец – создатель (администратор может сразу назначить другого)
 const create = async (data, user) => {
-    const event = await Event.create({ ...toAttributes(data), organizerId: user.id });
+    await assertOrganizerChange(data, user);
+    const event = await Event.create({ organizerId: user.id, ...toAttributes(data) });
     return Event.findByPk(event.id, { include: [includeCategory] });
 };
 
-const update = async (id, data) => {
+const update = async (id, data, user) => {
     const attrs = toAttributes(data);
     const updated = await sequelize.transaction(async (transaction) => {
         // блокировка строки: регистрации этого мероприятия ждут, пока проверка вместимости не завершится
         const event = await Event.findByPk(id, { transaction, lock: transaction.LOCK.UPDATE });
         if (!event) throw ApiError.notFound('Мероприятие не найдено');
+        assertCanManageEvent(user, event);
+        await assertOrganizerChange(data, user, transaction);
         if (attrs.capacity && attrs.capacity < event.seatsTaken) {
             throw ApiError.conflict(`Вместимость не может быть меньше числа занятых мест (${event.seatsTaken})`, 'CAPACITY_TOO_SMALL');
         }
@@ -127,12 +149,74 @@ const update = async (id, data) => {
     return Event.findByPk(updated.id, { include: [includeCategory] });
 };
 
-// Удаление: регистрации, напоминания, сообщения чата и избранное удаляет БД (ON DELETE CASCADE)
-const remove = async (id) => {
+// Удаление допускается только для мероприятия без регистраций (в том числе отмененных):
+// история участия не уничтожается, для остальных случаев есть отмена мероприятия.
+// Напоминаний без регистраций нет; сообщения чата и избранное удаляет БД (ON DELETE CASCADE)
+const remove = async (id, user) => sequelize.transaction(async (transaction) => {
+    const event = await Event.findByPk(id, { transaction, lock: transaction.LOCK.UPDATE });
+    if (!event) throw ApiError.notFound('Мероприятие не найдено');
+    assertCanManageEvent(user, event);
+    if (await Registration.count({ where: { eventId: id }, transaction })) {
+        throw ApiError.conflict('Нельзя удалить мероприятие, на которое уже регистрировались: его можно отменить', 'EVENT_HAS_REGISTRATIONS');
+    }
+    await event.destroy({ transaction });
+    return event;
+});
+
+// Мероприятия организатора (для администратора – все) с числом активных и отмененных регистраций
+const listManaged = async (user, query) => {
+    const where = isAdmin(user) && query.all ? {} : { organizerId: user.id };
+    const page = paginate(query);
+    const { rows, count } = await Event.findAndCountAll({
+        where,
+        include: [includeCategory],
+        order: [['startsAt', 'DESC'], ['id', 'DESC']],
+        offset: page.skip,
+        limit: page.limit
+    });
+    const ids = rows.map((e) => e.id);
+    const counts = ids.length ? await sequelize.query(
+        `SELECT event_id, count(*) FILTER (WHERE status <> 'cancelled')::int AS active,
+                count(*) FILTER (WHERE status = 'attended')::int AS attended,
+                count(*) FILTER (WHERE status = 'cancelled')::int AS cancelled
+         FROM registrations WHERE event_id IN (:ids) GROUP BY event_id`,
+        { replacements: { ids }, type: QueryTypes.SELECT }
+    ) : [];
+    const byId = new Map(counts.map((c) => [String(c.event_id), c]));
+    const items = rows.map((e) => {
+        const c = byId.get(String(e.id)) || { active: 0, attended: 0, cancelled: 0 };
+        return { ...e.toJSON(), registrations: { active: c.active, attended: c.attended, cancelled: c.cancelled } };
+    });
+    return pageResult(items, count, page);
+};
+
+// Статистика одного мероприятия для его организатора и администратора
+const stats = async (id, user) => {
     const event = await Event.findByPk(id);
     if (!event) throw ApiError.notFound('Мероприятие не найдено');
-    await event.destroy();
-    return event;
+    assertCanManageEvent(user, event);
+    const [[totals], timeline] = await Promise.all([
+        sequelize.query(
+            `SELECT count(*) FILTER (WHERE status <> 'cancelled')::int AS active,
+                    count(*) FILTER (WHERE status = 'attended')::int AS attended,
+                    count(*) FILTER (WHERE status = 'cancelled')::int AS cancelled,
+                    count(DISTINCT user_id)::int AS users
+             FROM registrations WHERE event_id = :id`,
+            { replacements: { id }, type: QueryTypes.SELECT }
+        ),
+        sequelize.query(
+            `SELECT to_char(created_at AT TIME ZONE 'UTC', 'YYYY-MM-DD') AS date, count(*)::int AS count
+             FROM registrations WHERE event_id = :id GROUP BY 1 ORDER BY 1`,
+            { replacements: { id }, type: QueryTypes.SELECT }
+        )
+    ]);
+    return {
+        event: { id: String(event.id), title: event.title, capacity: event.capacity, seatsTaken: event.seatsTaken },
+        registrations: totals,
+        fillRate: event.capacity ? Math.round((event.seatsTaken / event.capacity) * 100) : null,
+        favorites: await Favorite.count({ where: { eventId: id } }),
+        timeline
+    };
 };
 
 // Похожие мероприятия: та же категория или общие теги, только будущие
@@ -159,4 +243,4 @@ const cities = async () => {
     return rows.map((r) => r.city);
 };
 
-module.exports = { list, getById, findOrFail, create, update, remove, similar, cities, buildFilter };
+module.exports = { list, getById, findOrFail, create, update, remove, listManaged, stats, similar, cities, buildFilter };

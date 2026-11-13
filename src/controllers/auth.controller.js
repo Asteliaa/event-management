@@ -13,7 +13,7 @@ const changePassword = async (req, res) => {
 };
 
 const myRegistrations = async (req, res) =>
-    res.json(await registrationService.listMine(req.user.id, { when: req.query.when }));
+    res.json(await registrationService.listMine(req.user.id, req.valid.query));
 
 const myFavorites = async (req, res) => res.json(await userService.listFavorites(req.user.id));
 

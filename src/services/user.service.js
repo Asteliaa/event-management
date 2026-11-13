@@ -37,11 +37,11 @@ const remove = async (id, currentUser) => {
         if (!user) throw ApiError.notFound('Пользователь не найден');
         await sequelize.query(
             `WITH active AS (
-                 SELECT event_id, sum(tickets) AS tickets FROM registrations
+                 SELECT event_id, count(*) AS seats FROM registrations
                  WHERE user_id = :id AND status <> 'cancelled'
                  GROUP BY event_id
              )
-             UPDATE events e SET seats_taken = e.seats_taken - active.tickets, updated_at = now()
+             UPDATE events e SET seats_taken = e.seats_taken - active.seats, updated_at = now()
              FROM active WHERE e.id = active.event_id`,
             { replacements: { id }, transaction }
         );

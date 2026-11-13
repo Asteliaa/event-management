@@ -22,4 +22,12 @@ const toRooms = (roomList, name, payload) => {
     if (io) io.to(roomList).emit(name, payload);
 };
 
-module.exports = { rooms, setIO, toAll, toRooms };
+// Комнаты тех, кто управляет мероприятием: администраторы и личная комната организатора-владельца
+const eventStaffRooms = (event) => {
+    const list = [rooms.admins];
+    const organizerId = event.organizerId ?? event.get?.('organizerId');
+    if (organizerId !== null && organizerId !== undefined) list.push(rooms.user(String(organizerId)));
+    return list;
+};
+
+module.exports = { rooms, setIO, toAll, toRooms, eventStaffRooms };

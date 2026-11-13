@@ -1,4 +1,4 @@
-const { useTestDB, createUser, createAdmin, createEvent, missingId } = require('./helpers');
+const { useTestDB, createUser, createAdmin, registerUser, createEvent, missingId } = require('./helpers');
 const http = require('http');
 const jwt = require('jsonwebtoken');
 const request = require('supertest');
@@ -123,8 +123,8 @@ describe('Уведомления в реальном времени', () => {
         const event = await createEvent({ title: 'DevDay', capacity: 10 });
         const s = await connectAs(admin);
         const received = waitFor(s, 'registration:created');
-        await request(app).post(`/api/v1/events/${event.id}/registrations`).set('Authorization', user.auth).send({ tickets: 2 });
-        expect(await received).toMatchObject({ title: 'DevDay', name: 'Анна', tickets: 2, seatsLeft: 8 });
+        await request(app).post(`/api/v1/events/${event.id}/registrations`).set('Authorization', user.auth).send({});
+        expect(await received).toMatchObject({ title: 'DevDay', name: 'Анна', seatsLeft: 9 });
     });
 
     it('создание мероприятия получают все подключенные клиенты', async () => {
@@ -140,6 +140,7 @@ describe('Уведомления в реальном времени', () => {
         const user = await createUser();
         const other = await createUser();
         const event = await createEvent({ title: 'Скоро начнется', startsAt: new Date(Date.now() + 20 * 60e3) });
+        await registerUser(event, user);
         await request(app).post('/api/v1/reminders').set('Authorization', user.auth).send({ event: event.id, offsetMinutes: 15 });
         const tab1 = await connectAs(user);
         const tab2 = await connectAs(user);

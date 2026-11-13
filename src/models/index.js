@@ -19,6 +19,8 @@ User.hasMany(Registration, { as: 'registrations', foreignKey: 'userId' });
 
 Reminder.belongsTo(Event, { as: 'event', foreignKey: 'eventId' });
 Reminder.belongsTo(User, { as: 'user', foreignKey: 'userId' });
+Reminder.belongsTo(Registration, { as: 'registration', foreignKey: 'registrationId' });
+Registration.hasMany(Reminder, { as: 'reminders', foreignKey: 'registrationId' });
 
 Message.belongsTo(Event, { as: 'event', foreignKey: 'eventId' });
 Message.belongsTo(User, { as: 'user', foreignKey: 'userId' });

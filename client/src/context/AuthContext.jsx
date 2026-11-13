@@ -59,6 +59,9 @@ export function AuthProvider({ children }) {
     ...state,
     isAuthenticated: state.status === 'authenticated',
     isAdmin: state.user?.role === 'admin',
+    isOrganizer: state.user?.role === 'organizer',
+    // создавать мероприятия и управлять своими могут организаторы и администраторы
+    canOrganize: ['organizer', 'admin'].includes(state.user?.role),
     login: (credentials) => authApi.login(credentials).then(applyAuth),
     register: (data) => authApi.register(data).then(applyAuth),
     updateUser: (user) => dispatch({ type: 'USER_UPDATED', user }),

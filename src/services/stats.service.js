@@ -10,8 +10,9 @@ const overview = async () => {
         Event.count(),
         Event.count({ where: { startsAt: { [Op.gte]: now } } }),
         User.count(),
-        select(`SELECT count(*)::int AS count, coalesce(sum(tickets), 0)::int AS tickets
-                FROM registrations WHERE status <> 'cancelled'`),
+        select(`SELECT count(*) FILTER (WHERE status <> 'cancelled')::int AS count,
+                       count(*) FILTER (WHERE status = 'cancelled')::int AS cancelled
+                FROM registrations`),
         Reminder.count({ where: { status: 'sent' } }),
         select(`SELECT type, count(*)::int AS events, coalesce(sum(seats_taken), 0)::int AS seats
                 FROM events GROUP BY type ORDER BY events DESC, type`),
@@ -37,7 +38,7 @@ const overview = async () => {
             upcoming,
             users,
             registrations: registrations[0]?.count || 0,
-            tickets: registrations[0]?.tickets || 0,
+            cancelledRegistrations: registrations[0]?.cancelled || 0,
             remindersSent
         },
         byType,

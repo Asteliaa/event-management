@@ -68,7 +68,8 @@ export default function AdminUsers() {
                   </td>
                   <td>
                     <select value={u.role} disabled={u.id === me.id} onChange={(e) => patch(u, { role: e.target.value })} aria-label="Роль">
-                      <option value="user">Пользователь</option>
+                      <option value="user">Участник</option>
+                      <option value="organizer">Организатор</option>
                       <option value="admin">Администратор</option>
                     </select>
                   </td>

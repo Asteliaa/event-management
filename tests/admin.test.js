@@ -81,7 +81,7 @@ describe('Администрирование пользователей', () => 
         const admin = await createAdmin();
         const user = await createUser();
         const event = await createEvent({ capacity: 5 });
-        await request(app).post(`/api/v1/events/${event.id}/registrations`).set('Authorization', user.auth).send({ tickets: 3 });
+        await request(app).post(`/api/v1/events/${event.id}/registrations`).set('Authorization', user.auth).send({});
         expect((await request(app).delete(`/api/v1/admin/users/${user.id}`).set('Authorization', admin.auth)).status).toBe(204);
         expect((await Event.findByPk(event.id)).seatsTaken).toBe(0);
         expect(await Registration.count()).toBe(0);
@@ -97,14 +97,14 @@ describe('Статистика', () => {
         const cat = await createCategory({ name: 'IT', color: '#6366f1' });
         const event = await createEvent({ type: 'conference', category: cat.id, capacity: 100 });
         await createEvent({ type: 'webinar' });
-        await request(app).post(`/api/v1/events/${event.id}/registrations`).set('Authorization', user.auth).send({ tickets: 4 });
+        await request(app).post(`/api/v1/events/${event.id}/registrations`).set('Authorization', user.auth).send({});
 
         const res = await request(app).get('/api/v1/admin/stats').set('Authorization', admin.auth);
         expect(res.status).toBe(200);
-        expect(res.body.totals).toMatchObject({ events: 2, upcoming: 2, users: 2, registrations: 1, tickets: 4 });
-        expect(res.body.byType).toEqual(expect.arrayContaining([{ type: 'conference', events: 1, seats: 4 }]));
+        expect(res.body.totals).toMatchObject({ events: 2, upcoming: 2, users: 2, registrations: 1, cancelledRegistrations: 0 });
+        expect(res.body.byType).toEqual(expect.arrayContaining([{ type: 'conference', events: 1, seats: 1 }]));
         expect(res.body.byCategory).toEqual(expect.arrayContaining([
-            { name: 'IT', color: '#6366f1', events: 1, seats: 4 },
+            { name: 'IT', color: '#6366f1', events: 1, seats: 1 },
             { name: 'Без категории', color: '#94a3b8', events: 1, seats: 0 }
         ]));
         expect(res.body.topEvents[0].title).toBe(event.title);

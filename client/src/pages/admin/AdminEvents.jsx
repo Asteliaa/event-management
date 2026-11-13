@@ -1,71 +1,15 @@
 import { useState } from 'react';
 import { Link } from 'react-router';
-import { Download, Eye, Pencil, Plus, Search, Trash2, Users } from 'lucide-react';
+import { Eye, Pencil, Plus, Search, Trash2, Users } from 'lucide-react';
 import { useFetch } from '../../hooks/useFetch.js';
 import { useDebounce } from '../../hooks/useDebounce.js';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle.js';
-import { eventsApi, registrationsApi } from '../../api/index.js';
+import { eventsApi } from '../../api/index.js';
 import { getErrorMessage } from '../../api/client.js';
 import { useNotifications } from '../../context/NotificationContext.jsx';
-import { ConfirmDialog, ErrorState, Modal, Pagination, Spinner } from '../../components/ui/index.jsx';
-import { STATUS_LABELS, TYPE_LABELS, downloadBlob, formatShort, formatTime } from '../../utils/format.js';
-
-function ParticipantsModal({ event, onClose }) {
-  const { notify } = useNotifications();
-  const { data, loading, error, setData } = useFetch(() => eventsApi.participants(event.id), [event.id]);
-
-  async function exportCsv() {
-    try {
-      downloadBlob(await eventsApi.participantsCsv(event.id), `participants-${event.id}.csv`);
-    } catch (err) {
-      notify(getErrorMessage(err), 'error');
-    }
-  }
-
-  async function setStatus(reg, status) {
-    try {
-      const updated = await registrationsApi.update(reg.id, { status });
-      setData((list) => list.map((r) => (r.id === reg.id ? { ...r, status: updated.status } : r)));
-    } catch (err) {
-      notify(getErrorMessage(err), 'error');
-    }
-  }
-
-  return (
-    <Modal
-      title={`Участники: ${event.title}`}
-      onClose={onClose}
-      footer={<button type="button" className="btn btn--soft" onClick={exportCsv} disabled={!data?.length}><Download size={16} /> Выгрузить CSV</button>}
-    >
-      {loading && <Spinner />}
-      {error && <ErrorState message={error} />}
-      {data?.length === 0 && <p className="muted">Регистраций пока нет.</p>}
-      {data?.length > 0 && (
-        <div className="table-wrap">
-          <table className="table">
-            <thead><tr><th>Участник</th><th>Билетов</th><th>Статус</th></tr></thead>
-            <tbody>
-              {data.map((r) => (
-                <tr key={r.id}>
-                  <td>{r.user?.name}<small className="muted">{r.user?.email}</small></td>
-                  <td>{r.tickets}</td>
-                  <td>
-                    {r.status === 'cancelled' ? STATUS_LABELS.cancelled : (
-                      <select value={r.status} onChange={(e) => setStatus(r, e.target.value)} aria-label="Статус">
-                        <option value="registered">{STATUS_LABELS.registered}</option>
-                        <option value="attended">{STATUS_LABELS.attended}</option>
-                      </select>
-                    )}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
-    </Modal>
-  );
-}
+import { ConfirmDialog, ErrorState, Pagination, Spinner } from '../../components/ui/index.jsx';
+import ParticipantsModal from '../../components/events/ParticipantsModal.jsx';
+import { TYPE_LABELS, formatShort, formatTime } from '../../utils/format.js';
 
 export default function AdminEvents() {
   useDocumentTitle('Мероприятия');
@@ -144,7 +88,7 @@ export default function AdminEvents() {
       {toDelete && (
         <ConfirmDialog
           title="Удалить мероприятие?"
-          text={`«${toDelete.title}» будет удалено вместе с регистрациями, напоминаниями и чатом. Действие нельзя отменить.`}
+          text={`«${toDelete.title}» будет удалено вместе с чатом. Мероприятие, на которое уже регистрировались, удалить нельзя – его можно отменить.`}
           confirmLabel="Удалить"
           danger
           busy={busy}

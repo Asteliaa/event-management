@@ -16,6 +16,7 @@ const AdminEvents = lazy(() => import('./pages/admin/AdminEvents.jsx'));
 const EventFormPage = lazy(() => import('./pages/admin/EventFormPage.jsx'));
 const AdminCategories = lazy(() => import('./pages/admin/AdminCategories.jsx'));
 const AdminUsers = lazy(() => import('./pages/admin/AdminUsers.jsx'));
+const OrganizerEvents = lazy(() => import('./pages/organizer/OrganizerEvents.jsx'));
 
 // Карта маршрутов приложения: публичные, только для гостей, для вошедших и для администраторов
 export default function App() {
@@ -39,6 +40,13 @@ export default function App() {
             <Route path="reminders" element={<MyReminders />} />
             <Route path="settings" element={<ProfileSettings />} />
           </Route>
+        </Route>
+
+        {/* кабинет организатора: свои мероприятия, участники, статистика (администратору тоже доступен) */}
+        <Route element={<ProtectedRoute roles={['organizer', 'admin']} />}>
+          <Route path="organizer" element={<OrganizerEvents />} />
+          <Route path="organizer/events/new" element={<EventFormPage />} />
+          <Route path="organizer/events/:id/edit" element={<EventFormPage />} />
         </Route>
 
         <Route element={<ProtectedRoute adminOnly />}>

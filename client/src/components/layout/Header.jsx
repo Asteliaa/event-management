@@ -12,7 +12,7 @@ const NAV = [
 ];
 
 export default function Header() {
-  const { user, isAuthenticated, isAdmin, logout } = useAuth();
+  const { user, isAuthenticated, isAdmin, isOrganizer, logout } = useAuth();
   const { theme, toggleTheme } = useTheme();
   const [menuOpen, setMenuOpen] = useState(false);
   const location = useLocation();
@@ -41,6 +41,7 @@ export default function Header() {
             <NavLink key={item.to} to={item.to} end={item.end} className="nav__link">{item.label}</NavLink>
           ))}
           {isAuthenticated && <NavLink to="/profile" className="nav__link nav__link--mobile">Личный кабинет</NavLink>}
+          {isOrganizer && <NavLink to="/organizer" className="nav__link">Мои мероприятия</NavLink>}
           {isAdmin && <NavLink to="/admin" className="nav__link nav__link--mobile">Админ-панель</NavLink>}
           {!isAuthenticated && <NavLink to="/login" className="nav__link nav__link--mobile">Войти</NavLink>}
         </nav>

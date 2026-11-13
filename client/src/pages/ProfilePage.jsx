@@ -9,7 +9,7 @@ import { authApi, remindersApi } from '../api/index.js';
 import { getErrorMessage, getFieldErrors } from '../api/client.js';
 import EventRow, { DateBlock } from '../components/events/EventCard.jsx';
 import { EmptyState, ErrorState, Field, Spinner } from '../components/ui/index.jsx';
-import { STATUS_LABELS, TYPE_LABELS, formatDateTime, formatOffset, formatTime, placeOf, timeUntil } from '../utils/format.js';
+import { STATUS_LABELS, TYPE_LABELS, formatDateTime, formatOffset, formatShort, formatTime, placeOf, timeUntil } from '../utils/format.js';
 
 const TABS = [
   { to: '/profile', label: 'Регистрации', icon: CalendarCheck, end: true },
@@ -27,7 +27,7 @@ export default function ProfileLayout() {
         <span className="avatar avatar--lg">{user.name.split(' ').map((p) => p[0]).slice(0, 2).join('').toUpperCase()}</span>
         <div>
           <h1>{user.name}</h1>
-          <p className="muted">{[user.email, user.city, user.role === 'admin' && 'администратор'].filter(Boolean).join(', ')}</p>
+          <p className="muted">{[user.email, user.city, user.role === 'admin' && 'администратор', user.role === 'organizer' && 'организатор'].filter(Boolean).join(', ')}</p>
         </div>
       </header>
       <nav className="tabs" aria-label="Разделы кабинета">
@@ -43,12 +43,14 @@ export default function ProfileLayout() {
 export function MyRegistrations() {
   useDocumentTitle('Мои регистрации');
   const [when, setWhen] = useState('upcoming');
-  const { data, loading, error, reload } = useFetch(() => authApi.myRegistrations({ when }), [when]);
+  // «Отмененные» – история отмен (повторная запись создает новую регистрацию, старая остается здесь)
+  const params = when === 'cancelled' ? { when: 'all', status: 'cancelled' } : { when };
+  const { data, loading, error, reload } = useFetch(() => authApi.myRegistrations(params), [when]);
 
   return (
     <section>
       <div className="segmented">
-        {[['upcoming', 'Предстоящие'], ['past', 'Прошедшие'], ['all', 'Все']].map(([v, l]) => (
+        {[['upcoming', 'Предстоящие'], ['past', 'Прошедшие'], ['all', 'Все'], ['cancelled', 'Отмененные']].map(([v, l]) => (
           <button key={v} type="button" className={when === v ? 'is-active' : ''} onClick={() => setWhen(v)}>{l}</button>
         ))}
       </div>
@@ -69,7 +71,7 @@ export function MyRegistrations() {
             </div>
             <div className="timeline__side">
               <span className={`chip chip--status-${r.status}`}>{STATUS_LABELS[r.status]}</span>
-              <small className="muted">{r.tickets} {r.tickets === 1 ? 'билет' : 'билета'}, {timeUntil(r.event.startsAt)}</small>
+              <small className="muted">{r.status === 'cancelled' && r.cancelledAt ? `отменена ${formatShort(r.cancelledAt)}` : timeUntil(r.event.startsAt)}</small>
             </div>
           </Link>
         ))}

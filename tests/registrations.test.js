@@ -1,4 +1,4 @@
-const { useTestDB, createUser, createAdmin, createEvent, inDays, missingId } = require('./helpers');
+const { useTestDB, createUser, createAdmin, createOrganizer, createEvent, inDays, missingId } = require('./helpers');
 const request = require('supertest');
 const app = require('../src/app');
 const { Event, Registration, Reminder } = require('../src/models');
@@ -10,14 +10,17 @@ const register = (event, user, body = {}) =>
 const seats = async (event) => (await Event.findByPk(event.id)).seatsTaken;
 
 describe('POST /events/:id/registrations', () => {
-    it('201: регистрация, занятые места и автоматическое напоминание за сутки', async () => {
+    it('201: одна регистрация – одно место, автоматическое напоминание за сутки привязано к регистрации', async () => {
         const user = await createUser();
         const event = await createEvent({ capacity: 10, startsAt: inDays(5) });
-        const res = await register(event, user, { tickets: 3, comment: 'Буду с коллегами' });
+        const res = await register(event, user, { comment: 'Буду с ноутбуком' });
         expect(res.status).toBe(201);
-        expect(res.body).toMatchObject({ tickets: 3, status: 'registered', comment: 'Буду с коллегами' });
-        expect(res.body.autoReminder).toMatchObject({ offsetMinutes: 1440, kind: 'auto', status: 'pending' });
-        expect(await seats(event)).toBe(3);
+        expect(res.body).toMatchObject({ status: 'registered', comment: 'Буду с ноутбуком' });
+        expect(res.body.tickets).toBeUndefined();
+        expect(res.body.autoReminder).toMatchObject({
+            offsetMinutes: 1440, kind: 'auto', status: 'pending', registration: res.body.id
+        });
+        expect(await seats(event)).toBe(1);
     });
 
     it('если до начала меньше суток – напоминание за час, меньше часа – без напоминания', async () => {
@@ -37,12 +40,12 @@ describe('POST /events/:id/registrations', () => {
         expect(res.body.error.code).toBe('ALREADY_REGISTERED');
     });
 
-    it('409 NO_SEATS, если мест не хватает', async () => {
-        const event = await createEvent({ capacity: 3 });
-        await register(event, await createUser(), { tickets: 2 });
-        const res = await register(event, await createUser(), { tickets: 2 });
+    it('409 NO_SEATS, если свободных мест нет', async () => {
+        const event = await createEvent({ capacity: 1 });
+        await register(event, await createUser());
+        const res = await register(event, await createUser());
         expect(res.status).toBe(409);
-        expect(res.body.error).toMatchObject({ code: 'NO_SEATS', message: expect.stringContaining('свободно 1') });
+        expect(res.body.error.code).toBe('NO_SEATS');
     });
 
     it('параллельные запросы не превышают вместимость (атомарное бронирование)', async () => {
@@ -61,75 +64,77 @@ describe('POST /events/:id/registrations', () => {
         expect((await register({ id: missingId }, user)).status).toBe(404);
     });
 
-    it('422 при некорректном числе билетов, 401 без токена', async () => {
+    it('422, если передано несколько билетов (поле tickets больше не поддерживается); 401 без токена', async () => {
         const event = await createEvent();
-        expect((await register(event, await createUser(), { tickets: 0 })).status).toBe(422);
-        expect((await register(event, await createUser(), { tickets: 11 })).status).toBe(422);
+        expect((await register(event, await createUser(), { tickets: 2 })).status).toBe(422);
+        expect((await register(event, await createUser(), { tickets: 1 })).status).toBe(201);
         expect((await request(app).post(`/api/v1/events/${event.id}/registrations`)).status).toBe(401);
     });
 });
 
 describe('PATCH и DELETE /registrations/:id', () => {
     const setup = async (capacity = 5) => {
+        const organizer = await createOrganizer();
         const user = await createUser();
-        const event = await createEvent({ capacity });
-        const reg = (await register(event, user, { tickets: 2 })).body;
-        return { user, event, reg };
+        const event = await createEvent({ capacity, organizerId: organizer.id });
+        const reg = (await register(event, user)).body;
+        return { organizer, user, event, reg };
     };
+    const patch = (reg, who, body) => request(app).patch(`/api/v1/registrations/${reg.id}`).set('Authorization', who.auth).send(body);
 
-    it('владелец изменяет число билетов, места пересчитываются', async () => {
+    it('участник меняет свой комментарий; чужую регистрацию изменить нельзя (403)', async () => {
         const { user, event, reg } = await setup();
-        const up = await request(app).patch(`/api/v1/registrations/${reg.id}`).set('Authorization', user.auth).send({ tickets: 4 });
-        expect(up.status).toBe(200);
-        expect(up.body.event).toMatchObject({ title: event.title });
-        expect(await seats(event)).toBe(4);
-        await request(app).patch(`/api/v1/registrations/${reg.id}`).set('Authorization', user.auth).send({ tickets: 1 });
-        expect(await seats(event)).toBe(1);
+        const res = await patch(reg, user, { comment: 'Приду к началу' });
+        expect(res.status).toBe(200);
+        expect(res.body).toMatchObject({ comment: 'Приду к началу', event: { title: event.title } });
+        expect((await patch(reg, await createUser(), { comment: 'x' })).status).toBe(403);
     });
 
-    it('409, если увеличение превышает вместимость', async () => {
-        const { user, reg } = await setup(3);
-        const res = await request(app).patch(`/api/v1/registrations/${reg.id}`).set('Authorization', user.auth).send({ tickets: 4 });
-        expect(res.status).toBe(409);
+    it('отметку о посещении ставят организатор мероприятия и администратор, но не участник и не чужой организатор', async () => {
+        const { organizer, user, reg } = await setup();
+        expect((await patch(reg, user, { status: 'attended' })).status).toBe(403);
+        expect((await patch(reg, await createOrganizer(), { status: 'attended' })).status).toBe(403);
+        expect((await patch(reg, organizer, { status: 'attended' })).body.status).toBe('attended');
+        expect((await patch(reg, await createAdmin(), { status: 'registered' })).body.status).toBe('registered');
     });
 
-    it('чужую регистрацию изменить нельзя (403), администратор может отметить посещение', async () => {
-        const { reg } = await setup();
-        const other = await createUser();
-        const admin = await createAdmin();
-        expect((await request(app).patch(`/api/v1/registrations/${reg.id}`).set('Authorization', other.auth).send({ tickets: 1 })).status).toBe(403);
-        const res = await request(app).patch(`/api/v1/registrations/${reg.id}`).set('Authorization', admin.auth).send({ status: 'attended' });
-        expect(res.body.status).toBe('attended');
-    });
-
-    it('пользователь не может сам поставить attended', async () => {
-        const { user, reg } = await setup();
-        const res = await request(app).patch(`/api/v1/registrations/${reg.id}`).set('Authorization', user.auth).send({ status: 'attended' });
-        expect(res.status).toBe(403);
-    });
-
-    it('отмена освобождает места и удаляет неотправленные напоминания; затем можно зарегистрироваться снова', async () => {
+    it('отмена освобождает место и отменяет ожидающие напоминания; повторная запись создает новую регистрацию', async () => {
         const { user, event, reg } = await setup();
         const res = await request(app).delete(`/api/v1/registrations/${reg.id}`).set('Authorization', user.auth);
         expect(res.status).toBe(200);
-        expect(res.body.status).toBe('cancelled');
+        expect(res.body).toMatchObject({ status: 'cancelled', cancelledBy: 'user' });
+        expect(res.body.cancelledAt).toBeDefined();
         expect(await seats(event)).toBe(0);
-        expect(await Reminder.count({ where: { userId: user.id } })).toBe(0);
+        const old = await Reminder.findAll({ where: { registrationId: reg.id } });
+        expect(old.map((r) => [r.status, r.cancelReason])).toEqual([['cancelled', 'registration_cancelled']]);
 
-        const again = await register(event, user, { tickets: 1 });
+        const again = await register(event, user);
         expect(again.status).toBe(201);
-        expect(again.body.id).toBe(reg.id);
+        expect(again.body.id).not.toBe(reg.id);
+        expect(again.body.autoReminder.registration).toBe(again.body.id);
         expect(await seats(event)).toBe(1);
+        // история: обе регистрации сохранены, активна только новая
+        const history = await Registration.findAll({ where: { userId: user.id }, order: [['id', 'ASC']] });
+        expect(history.map((r) => r.status)).toEqual(['cancelled', 'registered']);
     });
 
-    it('404 для отсутствующей регистрации', async () => {
-        const user = await createUser();
+    it('организатор может отменить регистрацию участника своего мероприятия', async () => {
+        const { organizer, event, reg } = await setup();
+        const res = await request(app).delete(`/api/v1/registrations/${reg.id}`).set('Authorization', organizer.auth);
+        expect(res.body).toMatchObject({ status: 'cancelled', cancelledBy: 'organizer' });
+        expect(await seats(event)).toBe(0);
+    });
+
+    it('отмененную регистрацию изменить нельзя (409); 404 для отсутствующей', async () => {
+        const { user, reg } = await setup();
+        await request(app).delete(`/api/v1/registrations/${reg.id}`).set('Authorization', user.auth);
+        expect((await patch(reg, user, { comment: 'x' })).status).toBe(409);
         expect((await request(app).delete(`/api/v1/registrations/${missingId}`).set('Authorization', user.auth)).status).toBe(404);
     });
 });
 
 describe('Мои регистрации и список участников', () => {
-    it('GET /auth/me/registrations – активные, по дате мероприятия', async () => {
+    it('GET /auth/me/registrations – активные по дате мероприятия; status=cancelled – история отмен', async () => {
         const user = await createUser();
         const later = await createEvent({ title: 'Позже', startsAt: inDays(20) });
         const sooner = await createEvent({ title: 'Раньше', startsAt: inDays(2) });
@@ -141,22 +146,42 @@ describe('Мои регистрации и список участников', (
 
         const res = await request(app).get('/api/v1/auth/me/registrations').set('Authorization', user.auth);
         expect(res.body.map((r) => r.event.title)).toEqual(['Раньше', 'Позже']);
+        const history = await request(app).get('/api/v1/auth/me/registrations?status=cancelled').set('Authorization', user.auth);
+        expect(history.body.map((r) => r.event.title)).toEqual(['Отменю']);
     });
 
-    it('администратор получает участников в JSON и CSV', async () => {
-        const admin = await createAdmin();
+    it('организатор своего мероприятия и администратор получают участников с email в JSON и CSV', async () => {
+        const organizer = await createOrganizer();
         const user = await createUser({ name: 'Анна; Петрова' });
-        const event = await createEvent();
-        await register(event, user, { tickets: 2 });
+        const event = await createEvent({ organizerId: organizer.id });
+        await register(event, user);
+        const url = `/api/v1/events/${event.id}/registrations`;
 
-        const json = await request(app).get(`/api/v1/events/${event.id}/registrations`).set('Authorization', admin.auth);
-        expect(json.body[0]).toMatchObject({ tickets: 2, user: { name: 'Анна; Петрова', email: user.email } });
+        for (const who of [organizer, await createAdmin()]) {
+            const json = await request(app).get(url).set('Authorization', who.auth);
+            expect(json.body[0]).toMatchObject({ status: 'registered', user: { name: 'Анна; Петрова', email: user.email } });
+        }
 
-        const csv = await request(app).get(`/api/v1/events/${event.id}/registrations?format=csv`).set('Authorization', admin.auth);
+        const csv = await request(app).get(`${url}?format=csv`).set('Authorization', organizer.auth);
         expect(csv.headers['content-type']).toMatch('text/csv');
-        expect(csv.text).toContain('Имя;Email;Билетов');
+        expect(csv.text).toContain('Имя;Email;Статус');
         expect(csv.text).toContain('"Анна; Петрова"');
 
-        expect((await request(app).get(`/api/v1/events/${event.id}/registrations`).set('Authorization', user.auth)).status).toBe(403);
+        // email не выдается участникам и другим организаторам
+        expect((await request(app).get(url).set('Authorization', user.auth)).status).toBe(403);
+        expect((await request(app).get(`${url}?format=csv`).set('Authorization', (await createOrganizer()).auth)).status).toBe(403);
+    });
+
+    it('список участников включает историю отмен; ?status=active – только активные', async () => {
+        const admin = await createAdmin();
+        const event = await createEvent();
+        const user = await createUser();
+        const first = (await register(event, user)).body;
+        await request(app).delete(`/api/v1/registrations/${first.id}`).set('Authorization', user.auth);
+        await register(event, user);
+        const url = `/api/v1/events/${event.id}/registrations`;
+        expect((await request(app).get(url).set('Authorization', admin.auth)).body.map((r) => r.status))
+            .toEqual(['cancelled', 'registered']);
+        expect((await request(app).get(`${url}?status=active`).set('Authorization', admin.auth)).body).toHaveLength(1);
     });
 });

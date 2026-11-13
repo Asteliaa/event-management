@@ -1,5 +1,5 @@
 const { z, recordId, pageQuery } = require('./common');
-const { User, Registration } = require('../models');
+const { User, Registration, Reminder } = require('../models');
 
 const category = z.object({
     name: z.string().trim().min(2).max(60),
@@ -8,7 +8,6 @@ const category = z.object({
 });
 
 const registrationUpdate = z.object({
-    tickets: z.number().int().min(1).max(10).optional(),
     status: z.enum(Registration.STATUSES).optional(),
     comment: z.string().trim().max(300).optional()
 }).refine((v) => Object.keys(v).length, 'Передайте хотя бы одно поле');
@@ -25,7 +24,7 @@ const reminderUpdate = z.object({
 }).refine((v) => Object.keys(v).length, 'Передайте хотя бы одно поле');
 
 const reminderList = z.object({
-    status: z.enum(['pending', 'sent']).optional(),
+    status: z.enum(Reminder.STATUSES).optional(),
     unread: z.enum(['true', 'false']).transform((v) => v === 'true').optional()
 });
 
@@ -42,10 +41,23 @@ const userUpdate = z.object({
 }).refine((v) => Object.keys(v).length, 'Передайте role или blocked');
 
 const registrationList = z.object({
-    format: z.enum(['json', 'csv']).default('json')
+    format: z.enum(['json', 'csv']).default('json'),
+    // all – все, включая отмененные (история); active – неотмененные
+    status: z.enum(['all', 'active', ...Registration.STATUSES]).default('all')
+});
+
+const managedList = z.object({
+    ...pageQuery,
+    limit: z.coerce.number().int().min(1).max(100).default(20),
+    all: z.enum(['true', 'false']).transform((v) => v === 'true').optional()
+});
+
+const myRegistrations = z.object({
+    when: z.enum(['all', 'upcoming', 'past']).default('all'),
+    status: z.enum(['active', 'cancelled', 'all']).default('active')
 });
 
 module.exports = {
     category, registrationUpdate, reminderCreate, reminderUpdate, reminderList,
-    userList, userUpdate, registrationList
+    userList, userUpdate, registrationList, managedList, myRegistrations
 };

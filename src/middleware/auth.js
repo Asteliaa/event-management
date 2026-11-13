@@ -50,8 +50,10 @@ const optionalAuth = async (req, res, next) => {
 };
 
 // Ролевая модель доступа (RBAC)
+const ROLE_NAMES = { admin: 'администраторов', organizer: 'организаторов' };
 const requireRole = (...roles) => (req, res, next) =>
-    next(req.user && roles.includes(req.user.role) ? undefined : ApiError.forbidden('Доступ только для администраторов'));
+    next(req.user && roles.includes(req.user.role) ? undefined
+        : ApiError.forbidden(`Доступ только для ${roles.map((r) => ROLE_NAMES[r] || r).join(' и ')}`));
 
 const isAdmin = requireRole('admin');
 

@@ -2,7 +2,8 @@ const { DataTypes, Model } = require('sequelize');
 const { sequelize } = require('../db');
 const { compact } = require('./serialize');
 
-const ROLES = ['user', 'admin'];
+// user – участник, organizer – облегченный организатор (роль выдает администратор), admin – администратор
+const ROLES = ['user', 'organizer', 'admin'];
 
 class User extends Model {
     toJSON() {

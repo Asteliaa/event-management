@@ -24,6 +24,9 @@ export const eventsApi = {
   create: (body) => api.post('/events', body).then(data),
   update: (id, body) => api.patch(`/events/${id}`, body).then(data),
   remove: (id) => api.delete(`/events/${id}`),
+  // мероприятия текущего организатора (администратор с all: true – все) и статистика мероприятия
+  managed: (params, signal) => api.get('/events/managed', { params, signal }).then(data),
+  stats: (id) => api.get(`/events/${id}/stats`).then(data),
   register: (id, body) => api.post(`/events/${id}/registrations`, body).then(data),
   participants: (id) => api.get(`/events/${id}/registrations`).then(data),
   participantsCsv: (id) => api.get(`/events/${id}/registrations`, { params: { format: 'csv' }, responseType: 'blob' }).then(data),

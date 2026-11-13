@@ -34,6 +34,7 @@ const createUser = async (data = {}) => {
 };
 
 const createAdmin = (data = {}) => createUser({ role: 'admin', ...data });
+const createOrganizer = (data = {}) => createUser({ role: 'organizer', ...data });
 
 const inDays = (days) => new Date(Date.now() + days * 864e5);
 
@@ -52,7 +53,10 @@ const createEvents = (list) => Promise.all(list.map(createEvent));
 
 const createCategory = (data = {}) => Category.create({ name: 'IT', slug: `it-${++counter}`, ...data });
 
+// Регистрация напрямую через сервис (для тестов других модулей)
+const registerUser = (event, user) => require('../src/services/registration.service').register(event.id, user);
+
 // Заведомо отсутствующий, но корректный id
 const missingId = '999999999';
 
-module.exports = { useTestDB, createUser, createAdmin, createEvent, createEvents, createCategory, inDays, missingId };
+module.exports = { useTestDB, createUser, createAdmin, createOrganizer, registerUser, createEvent, createEvents, createCategory, inDays, missingId };

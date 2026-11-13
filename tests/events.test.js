@@ -1,4 +1,4 @@
-const { useTestDB, createUser, createAdmin, createEvent, createCategory, createEvents, inDays, missingId } = require('./helpers');
+const { useTestDB, createUser, createAdmin, createOrganizer, createEvent, createCategory, createEvents, inDays, missingId } = require('./helpers');
 const request = require('supertest');
 const app = require('../src/app');
 const { Event, Registration, Reminder, Message, Favorite } = require('../src/models');
@@ -97,7 +97,7 @@ describe('GET /events/:id', () => {
         await request(app).post(`${api}/${event.id}/registrations`).set('Authorization', user.auth).send({});
         const res = await request(app).get(`${api}/${event.id}`).set('Authorization', user.auth);
         expect(res.body.isFavorite).toBe(true);
-        expect(res.body.myRegistration).toMatchObject({ tickets: 1, status: 'registered' });
+        expect(res.body.myRegistration).toMatchObject({ status: 'registered' });
         expect(res.body.myReminders).toHaveLength(1);
     });
 
@@ -183,20 +183,104 @@ describe('Создание, изменение и удаление (админи
         expect(reminder.remindAt.getTime()).toBe(newStart.getTime() - 24 * 3600e3);
     });
 
-    it('DELETE: 204 и каскадное удаление связанных данных', async () => {
+    it('DELETE: мероприятие с регистрациями (даже отмененными) удалить нельзя – 409, история сохраняется', async () => {
         const admin = await createAdmin();
         const user = await createUser();
         const event = await createEvent();
-        await request(app).post(`${api}/${event.id}/registrations`).set('Authorization', user.auth).send({});
+        const reg = (await request(app).post(`${api}/${event.id}/registrations`).set('Authorization', user.auth).send({})).body;
+        await request(app).delete(`/api/v1/registrations/${reg.id}`).set('Authorization', user.auth);
+        const res = await request(app).delete(`${api}/${event.id}`).set('Authorization', admin.auth);
+        expect(res.status).toBe(409);
+        expect(res.body.error.code).toBe('EVENT_HAS_REGISTRATIONS');
+        expect(await Registration.count()).toBe(1);
+    });
+
+    it('DELETE: 204 для мероприятия без регистраций, сообщения и избранное удаляются', async () => {
+        const admin = await createAdmin();
+        const user = await createUser();
+        const event = await createEvent();
         await Favorite.create({ userId: user.id, eventId: event.id });
         await Message.create({ eventId: event.id, userId: user.id, author: user.name, text: 'Привет' });
 
         const res = await request(app).delete(`${api}/${event.id}`).set('Authorization', admin.auth);
         expect(res.status).toBe(204);
-        expect(await Registration.count()).toBe(0);
-        expect(await Reminder.count()).toBe(0);
         expect(await Message.count()).toBe(0);
         expect(await Favorite.count()).toBe(0);
         expect((await request(app).delete(`${api}/${event.id}`).set('Authorization', admin.auth)).status).toBe(404);
+    });
+});
+
+describe('Организатор и владение мероприятиями', () => {
+    const body = () => ({ title: 'Митап организатора', type: 'meeting', startsAt: inDays(5).toISOString() });
+
+    it('организатор создает мероприятие и становится его владельцем; участник создать не может', async () => {
+        const organizer = await createOrganizer();
+        const res = await request(app).post(api).set('Authorization', organizer.auth).send(body());
+        expect(res.status).toBe(201);
+        expect(res.body.organizer).toBe(organizer.id);
+        const user = await createUser();
+        const denied = await request(app).post(api).set('Authorization', user.auth).send(body());
+        expect(denied.status).toBe(403);
+        expect(denied.body.error.message).toMatch('организаторов');
+    });
+
+    it('организатор изменяет и удаляет только свои мероприятия', async () => {
+        const owner = await createOrganizer();
+        const stranger = await createOrganizer();
+        const event = await createEvent({ organizerId: owner.id });
+        const url = `${api}/${event.id}`;
+        expect((await request(app).patch(url).set('Authorization', stranger.auth).send({ title: 'Чужое' })).status).toBe(403);
+        expect((await request(app).delete(url).set('Authorization', stranger.auth)).status).toBe(403);
+        expect((await request(app).patch(url).set('Authorization', owner.auth).send({ title: 'Мое' })).body.title).toBe('Мое');
+        expect((await request(app).delete(url).set('Authorization', owner.auth)).status).toBe(204);
+    });
+
+    it('без роли организатора права на прежние мероприятия теряются', async () => {
+        const owner = await createOrganizer();
+        const event = await createEvent({ organizerId: owner.id });
+        await owner.update({ role: 'user' });
+        expect((await request(app).patch(`${api}/${event.id}`).set('Authorization', owner.auth).send({ title: 'Чужое' })).status).toBe(403);
+    });
+
+    it('передать мероприятие может только администратор и только организатору или администратору', async () => {
+        const admin = await createAdmin();
+        const owner = await createOrganizer();
+        const next = await createOrganizer();
+        const user = await createUser();
+        const event = await createEvent({ organizerId: owner.id });
+        const url = `${api}/${event.id}`;
+        expect((await request(app).patch(url).set('Authorization', owner.auth).send({ organizer: next.id })).status).toBe(403);
+        expect((await request(app).patch(url).set('Authorization', admin.auth).send({ organizer: user.id })).status).toBe(422);
+        const res = await request(app).patch(url).set('Authorization', admin.auth).send({ organizer: next.id });
+        expect(res.body.organizer).toBe(next.id);
+        expect((await request(app).patch(url).set('Authorization', owner.auth).send({ title: 'Чужое' })).status).toBe(403);
+        expect((await request(app).patch(url).set('Authorization', next.auth).send({ title: 'Новый владелец' })).status).toBe(200);
+    });
+
+    it('GET /events/managed: свои мероприятия со счетчиками регистраций; администратор с all=true видит все', async () => {
+        const admin = await createAdmin();
+        const owner = await createOrganizer();
+        const mine = await createEvent({ title: 'Мое', organizerId: owner.id });
+        await createEvent({ title: 'Чужое', organizerId: admin.id });
+        const user = await createUser();
+        await request(app).post(`${api}/${mine.id}/registrations`).set('Authorization', user.auth).send({});
+
+        const res = await request(app).get(`${api}/managed`).set('Authorization', owner.auth);
+        expect(res.status).toBe(200);
+        expect(res.body.data.map((e) => e.title)).toEqual(['Мое']);
+        expect(res.body.data[0].registrations).toEqual({ active: 1, attended: 0, cancelled: 0 });
+        expect((await request(app).get(`${api}/managed?all=true`).set('Authorization', admin.auth)).body.meta.total).toBe(2);
+        expect((await request(app).get(`${api}/managed`).set('Authorization', user.auth)).status).toBe(403);
+    });
+
+    it('статистика мероприятия доступна владельцу и администратору', async () => {
+        const owner = await createOrganizer();
+        const event = await createEvent({ organizerId: owner.id, capacity: 4 });
+        const users = await Promise.all([createUser(), createUser()]);
+        for (const u of users) await request(app).post(`${api}/${event.id}/registrations`).set('Authorization', u.auth).send({});
+        const res = await request(app).get(`${api}/${event.id}/stats`).set('Authorization', owner.auth);
+        expect(res.body).toMatchObject({ registrations: { active: 2, cancelled: 0, attended: 0 }, fillRate: 50 });
+        expect((await request(app).get(`${api}/${event.id}/stats`).set('Authorization', users[0].auth)).status).toBe(403);
+        expect((await request(app).get(`${api}/${event.id}/stats`).set('Authorization', (await createOrganizer()).auth)).status).toBe(403);
     });
 });

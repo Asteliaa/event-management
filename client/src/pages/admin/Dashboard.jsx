@@ -31,7 +31,7 @@ export default function Dashboard() {
   const kpis = [
     { icon: CalendarRange, label: 'Мероприятий', value: totals.events, sub: `${totals.upcoming} предстоящих` },
     { icon: Users, label: 'Пользователей', value: totals.users },
-    { icon: Ticket, label: 'Регистраций', value: totals.registrations, sub: `${totals.tickets} билетов` },
+    { icon: Ticket, label: 'Регистраций', value: totals.registrations, sub: `${totals.cancelledRegistrations} отменено` },
     { icon: BellRing, label: 'Напоминаний', value: totals.remindersSent, sub: 'отправлено' },
   ];
 

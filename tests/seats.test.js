@@ -1,5 +1,5 @@
 // Согласованность счетчика мест и регистраций в PostgreSQL:
-// events.seats_taken всегда равен сумме билетов активных регистраций мероприятия
+// events.seats_taken всегда равен числу активных регистраций мероприятия (одна регистрация – одно место)
 const { useTestDB, createUser, createAdmin, createEvent } = require('./helpers');
 const request = require('supertest');
 const { QueryTypes } = require('sequelize');
@@ -11,71 +11,86 @@ useTestDB();
 
 const register = (event, user, body = {}) =>
     request(app).post(`/api/v1/events/${event.id}/registrations`).set('Authorization', user.auth).send(body);
-const patch = (id, user, body) => request(app).patch(`/api/v1/registrations/${id}`).set('Authorization', user.auth).send(body);
 const cancel = (id, user) => request(app).delete(`/api/v1/registrations/${id}`).set('Authorization', user.auth);
 
-// Расхождения «счетчик ≠ сумма активных билетов» по всем мероприятиям
+// Расхождения «счетчик ≠ число активных регистраций» по всем мероприятиям
 const mismatches = () => sequelize.query(
-    `SELECT e.id, e.seats_taken, coalesce(sum(r.tickets) FILTER (WHERE r.status <> 'cancelled'), 0)::int AS active
+    `SELECT e.id, e.seats_taken, count(r.id) FILTER (WHERE r.status <> 'cancelled')::int AS active
      FROM events e LEFT JOIN registrations r ON r.event_id = e.id
-     GROUP BY e.id HAVING e.seats_taken <> coalesce(sum(r.tickets) FILTER (WHERE r.status <> 'cancelled'), 0)`,
+     GROUP BY e.id HAVING e.seats_taken <> count(r.id) FILTER (WHERE r.status <> 'cancelled')`,
+    { type: QueryTypes.SELECT }
+);
+
+// Пары (мероприятие, пользователь) с несколькими активными регистрациями
+const duplicates = () => sequelize.query(
+    `SELECT event_id, user_id, count(*)::int FROM registrations WHERE status <> 'cancelled'
+     GROUP BY event_id, user_id HAVING count(*) > 1`,
     { type: QueryTypes.SELECT }
 );
 
 describe('Счетчик мест и регистрации', () => {
     afterEach(() => jest.restoreAllMocks());
 
-    it('после параллельных регистраций, изменений и отмен счетчик равен сумме активных билетов', async () => {
-        const event = await createEvent({ capacity: 12 });
-        const users = await Promise.all(Array.from({ length: 8 }, () => createUser()));
+    it('после параллельных регистраций, отмен и повторных записей счетчик равен числу активных регистраций', async () => {
+        const event = await createEvent({ capacity: 6 });
+        const users = await Promise.all(Array.from({ length: 9 }, () => createUser()));
 
-        // 8 человек по 2 билета на 12 мест: успешны ровно 6
-        const first = await Promise.all(users.map((u) => register(event, u, { tickets: 2 })));
+        // 9 человек на 6 мест: успешны ровно 6
+        const first = await Promise.all(users.map((u) => register(event, u)));
         const ok = first.map((res, i) => ({ res, user: users[i] })).filter(({ res }) => res.status === 201);
         expect(ok).toHaveLength(6);
 
-        // одновременно: часть отменяет, часть меняет число билетов, отказавшие пробуют снова
+        // одновременно: часть отменяет, отказавшие пробуют снова, отменивший записывается повторно
         const losers = first.map((res, i) => ({ res, user: users[i] })).filter(({ res }) => res.status !== 201);
         await Promise.all([
             cancel(ok[0].res.body.id, ok[0].user),
             cancel(ok[1].res.body.id, ok[1].user),
-            patch(ok[2].res.body.id, ok[2].user, { tickets: 4 }),
-            patch(ok[3].res.body.id, ok[3].user, { tickets: 1 }),
-            ...losers.map(({ user }) => register(event, user, { tickets: 3 })),
-            // повторная регистрация отменившего – параллельно с его же отменой
-            register(event, ok[0].user, { tickets: 1 })
+            ...losers.map(({ user }) => register(event, user)),
+            register(event, ok[0].user),
+            register(event, ok[0].user)
         ]);
 
         expect(await mismatches()).toEqual([]);
+        expect(await duplicates()).toEqual([]);
         const fresh = await Event.findByPk(event.id);
-        expect(fresh.seatsTaken).toBeLessThanOrEqual(12);
+        expect(fresh.seatsTaken).toBeLessThanOrEqual(6);
     });
 
-    it('двойная отмена одной регистрации освобождает места один раз', async () => {
+    it('двойная отмена одной регистрации освобождает место один раз', async () => {
         const user = await createUser();
         const event = await createEvent({ capacity: 5 });
-        const reg = (await register(event, user, { tickets: 3 })).body;
+        await register(event, await createUser());
+        const reg = (await register(event, user)).body;
         const results = await Promise.all([cancel(reg.id, user), cancel(reg.id, user), cancel(reg.id, user)]);
         expect(results.every((r) => r.status === 200)).toBe(true);
-        expect((await Event.findByPk(event.id)).seatsTaken).toBe(0);
+        expect((await Event.findByPk(event.id)).seatsTaken).toBe(1);
         expect(await mismatches()).toEqual([]);
     });
 
-    it('одновременные повторные регистрации одного пользователя: одна запись, места заняты один раз', async () => {
+    it('одновременные регистрации одного пользователя: одна активная запись, место занято один раз', async () => {
         const user = await createUser();
         const event = await createEvent({ capacity: 10 });
-        const results = await Promise.all(Array.from({ length: 5 }, () => register(event, user, { tickets: 2 })));
+        const results = await Promise.all(Array.from({ length: 5 }, () => register(event, user)));
         expect(results.filter((r) => r.status === 201)).toHaveLength(1);
         expect(results.filter((r) => r.status === 409).every((r) => r.body.error.code === 'ALREADY_REGISTERED')).toBe(true);
         expect(await Registration.count()).toBe(1);
-        expect((await Event.findByPk(event.id)).seatsTaken).toBe(2);
+        expect((await Event.findByPk(event.id)).seatsTaken).toBe(1);
     });
 
-    it('ошибка после брони мест откатывает всю регистрацию (транзакция)', async () => {
+    it('БД не допускает вторую активную регистрацию той же пары, но допускает новую после отмены', async () => {
+        const user = await createUser();
+        const event = await createEvent();
+        await Registration.create({ eventId: event.id, userId: user.id, status: 'cancelled', cancelledAt: new Date(), cancelledBy: 'user' });
+        await Registration.create({ eventId: event.id, userId: user.id });
+        await expect(Registration.create({ eventId: event.id, userId: user.id }))
+            .rejects.toMatchObject({ parent: { constraint: 'registrations_active_event_user_key' } });
+    });
+
+    it('ошибка после брони места откатывает всю регистрацию (транзакция)', async () => {
         const user = await createUser();
         const event = await createEvent({ capacity: 5 });
         jest.spyOn(reminderService, 'createAuto').mockRejectedValueOnce(new Error('сбой'));
-        const res = await register(event, user, { tickets: 2 });
+        const res = await register(event, user);
         expect(res.status).toBe(500);
         expect((await Event.findByPk(event.id)).seatsTaken).toBe(0);
         expect(await Registration.count()).toBe(0);
@@ -88,9 +103,9 @@ describe('Счетчик мест и регистрации', () => {
         const other = await createUser();
         const a = await createEvent({ capacity: 10 });
         const b = await createEvent({ capacity: 10 });
-        await register(a, user, { tickets: 3 });
-        await register(b, user, { tickets: 2 });
-        await register(a, other, { tickets: 1 });
+        await register(a, user);
+        await register(b, user);
+        await register(a, other);
         await request(app).delete(`/api/v1/admin/users/${user.id}`).set('Authorization', admin.auth);
         expect((await Event.findByPk(a.id)).seatsTaken).toBe(1);
         expect((await Event.findByPk(b.id)).seatsTaken).toBe(0);

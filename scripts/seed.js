@@ -55,7 +55,8 @@ async function seed() {
 
     const hash = (p) => bcrypt.hash(p, config.bcryptRounds);
     const admin = await User.create({ name: 'Администратор', email: ADMIN_EMAIL, passwordHash: await hash(ADMIN_PASSWORD), role: 'admin', city: 'Минск' });
-    const [anna, ivan, olga] = await User.bulkCreate([
+    const [organizer, anna, ivan, olga] = await User.bulkCreate([
+        { name: 'Мария Организатор', email: `organizer@${DEMO_DOMAIN}`, passwordHash: await hash(USER_PASSWORD), role: 'organizer', city: 'Минск' },
         { name: 'Анна Петрова', email: `anna@${DEMO_DOMAIN}`, passwordHash: await hash(USER_PASSWORD), city: 'Минск' },
         { name: 'Иван Сидоров', email: `ivan@${DEMO_DOMAIN}`, passwordHash: await hash(USER_PASSWORD), city: 'Гродно' },
         { name: 'Ольга Ковалёва', email: `olga@${DEMO_DOMAIN}`, passwordHash: await hash(USER_PASSWORD), city: 'Брест' }
@@ -148,24 +149,31 @@ async function seed() {
     const events = await Event.bulkCreate(eventData.map(({ category, location, ...e }) => ({
         ...e, categoryId: category.id, organizerId: admin.id, ...Event.locationToColumns(location)
     })), { returning: true });
+    // часть мероприятий принадлежит демо-организатору (облегченная роль: управляет только своими)
+    await Event.update({ organizerId: organizer.id }, { where: { id: events.filter((_, i) => i % 2 === 0).map((e) => e.id) } });
 
-    // Регистрации, счетчик мест и автоматические напоминания – в одной транзакции
+    // Регистрации (одна регистрация – одно место), счетчик мест и автоматические напоминания – в одной транзакции
     const registrations = [
-        [anna, events[0], 2], [anna, events[1], 1], [anna, events[2], 1], [anna, events[6], 1],
-        [ivan, events[0], 1], [ivan, events[3], 3], [ivan, events[4], 1],
-        [olga, events[1], 1], [olga, events[5], 2], [olga, events[6], 1], [olga, events[9], 1]
+        [anna, events[0]], [anna, events[1]], [anna, events[2]], [anna, events[6]],
+        [ivan, events[0]], [ivan, events[3]], [ivan, events[4]],
+        [olga, events[1]], [olga, events[5]], [olga, events[6]], [olga, events[9]]
     ];
     await sequelize.transaction(async (transaction) => {
-        for (const [user, event, tickets] of registrations) {
-            await Registration.create({ userId: user.id, eventId: event.id, tickets }, { transaction });
-            await reminderService.createAuto(user.id, event, transaction);
+        // история: Иван записывался на events[2], отменил участие, а затем записался снова (новая регистрация)
+        await Registration.create({
+            userId: ivan.id, eventId: events[2].id, status: 'cancelled', cancelledAt: new Date(), cancelledBy: 'user'
+        }, { transaction });
+        registrations.push([ivan, events[2]]);
+        for (const [user, event] of registrations) {
+            const registration = await Registration.create({ userId: user.id, eventId: event.id }, { transaction });
+            await reminderService.createAuto(registration, event, transaction);
         }
         // посещенное прошедшее мероприятие
         await Registration.create({ userId: anna.id, eventId: events[11].id, tickets: 1, status: 'attended' }, { transaction });
         // счетчик мест = сумма билетов активных регистраций
         await sequelize.query(
-            `UPDATE events e SET seats_taken = r.tickets
-             FROM (SELECT event_id, sum(tickets)::int AS tickets FROM registrations
+            `UPDATE events e SET seats_taken = r.seats
+             FROM (SELECT event_id, count(*)::int AS seats FROM registrations
                    WHERE status <> 'cancelled' GROUP BY event_id) r
              WHERE e.id = r.event_id`,
             { transaction }
@@ -182,7 +190,8 @@ async function seed() {
     console.log(`Готово (демо-данные): пользователей ${await User.count()}, категорий ${await Category.count()}, `
         + `мероприятий ${await Event.count()}, регистраций ${await Registration.count()}, `
         + `напоминаний ${await Reminder.count()}`);
-    console.log(`Администратор: ${admin.email}; пользователи: anna@, ivan@, olga@${DEMO_DOMAIN} (пароль ${USER_PASSWORD})`);
+    console.log(`Администратор: ${admin.email}; организатор: organizer@${DEMO_DOMAIN}; `
+        + `пользователи: anna@, ivan@, olga@${DEMO_DOMAIN} (пароль ${USER_PASSWORD})`);
 }
 
 seed()

@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Link, useLocation, useNavigate, useParams } from 'react-router';
 import {
-  ArrowLeft, CalendarDays, CalendarPlus, Heart, Link2, Lock, MapPin, Minus, Pencil, Plus, Ticket, User, Video,
+  ArrowLeft, CalendarDays, CalendarPlus, Heart, Link2, Lock, MapPin, Pencil, Ticket, User, Video,
 } from 'lucide-react';
 import { useFetch } from '../hooks/useFetch.js';
 import { useDocumentTitle } from '../hooks/useDocumentTitle.js';
@@ -20,42 +20,23 @@ function RegistrationPanel({ event, onChange }) {
   const { isAuthenticated } = useAuth();
   const { notify } = useNotifications();
   const location = useLocation();
-  const [tickets, setTickets] = useState(1);
   const [busy, setBusy] = useState(false);
   const [confirm, setConfirm] = useState(false);
   const reg = event.myRegistration;
-  const maxTickets = Math.min(10, event.seatsLeft ?? 10);
 
   async function register() {
     setBusy(true);
     try {
-      const { autoReminder, ...registration } = await eventsApi.register(event.id, { tickets });
+      // одна регистрация – одно место
+      const { autoReminder, ...registration } = await eventsApi.register(event.id, {});
       onChange((e) => ({
         ...e,
         myRegistration: registration,
-        seatsTaken: e.seatsTaken + tickets,
-        seatsLeft: e.capacity ? e.seatsLeft - tickets : null,
+        seatsTaken: e.seatsTaken + 1,
+        seatsLeft: e.capacity ? e.seatsLeft - 1 : null,
         myReminders: autoReminder ? [...e.myReminders.filter((r) => r.id !== autoReminder.id), autoReminder] : e.myReminders,
       }));
       notify('Вы зарегистрированы! Мы напомним о начале.', 'success');
-    } catch (err) {
-      notify(getErrorMessage(err), 'error');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function changeTickets(delta) {
-    const next = reg.tickets + delta;
-    setBusy(true);
-    try {
-      const updated = await registrationsApi.update(reg.id, { tickets: next });
-      onChange((e) => ({
-        ...e,
-        myRegistration: { ...e.myRegistration, tickets: updated.tickets },
-        seatsTaken: e.seatsTaken + delta,
-        seatsLeft: e.capacity ? e.seatsLeft - delta : null,
-      }));
     } catch (err) {
       notify(getErrorMessage(err), 'error');
     } finally {
@@ -70,8 +51,8 @@ function RegistrationPanel({ event, onChange }) {
       onChange((e) => ({
         ...e,
         myRegistration: null,
-        seatsTaken: e.seatsTaken - reg.tickets,
-        seatsLeft: e.capacity ? e.seatsLeft + reg.tickets : null,
+        seatsTaken: e.seatsTaken - 1,
+        seatsLeft: e.capacity ? e.seatsLeft + 1 : null,
         myReminders: e.myReminders.filter((r) => r.status === 'sent'),
       }));
       notify('Регистрация отменена', 'info');
@@ -97,14 +78,6 @@ function RegistrationPanel({ event, onChange }) {
     body = (
       <>
         <p className="notice notice--success"><Ticket size={16} /> Вы зарегистрированы</p>
-        <div className="tickets">
-          <span>Количество билетов</span>
-          <span className="stepper">
-            <button type="button" className="icon-btn" disabled={busy || reg.tickets <= 1} onClick={() => changeTickets(-1)} aria-label="Меньше"><Minus size={16} /></button>
-            <b>{reg.tickets}</b>
-            <button type="button" className="icon-btn" disabled={busy || reg.tickets >= 10 || event.seatsLeft === 0} onClick={() => changeTickets(1)} aria-label="Больше"><Plus size={16} /></button>
-          </span>
-        </div>
         <button type="button" className="btn btn--ghost btn--block" onClick={() => setConfirm(true)} disabled={busy}>Отменить регистрацию</button>
       </>
     );
@@ -112,14 +85,7 @@ function RegistrationPanel({ event, onChange }) {
   else {
     body = (
       <>
-        <div className="tickets">
-          <span>Количество билетов</span>
-          <span className="stepper">
-            <button type="button" className="icon-btn" disabled={tickets <= 1} onClick={() => setTickets((t) => t - 1)} aria-label="Меньше"><Minus size={16} /></button>
-            <b>{tickets}</b>
-            <button type="button" className="icon-btn" disabled={tickets >= maxTickets} onClick={() => setTickets((t) => t + 1)} aria-label="Больше"><Plus size={16} /></button>
-          </span>
-        </div>
+        <p className="muted small">Одна регистрация – одно место.</p>
         <button type="button" className="btn btn--primary btn--block btn--lg" onClick={register} disabled={busy}>
           {busy ? 'Регистрируем…' : 'Зарегистрироваться'}
         </button>
@@ -183,7 +149,9 @@ export default function EventPage() {
   if (loading && !event) return <div className="container page"><Spinner /></div>;
   if (error) return <div className="container page"><ErrorState message={error} onRetry={reload} /></div>;
 
-  const canChat = isAuthenticated && (event.myRegistration || isAdmin);
+  // управлять мероприятием может администратор или организатор-владелец (окончательно права проверяет сервер)
+  const canManage = isAdmin || (user?.role === 'organizer' && String(event.organizer?.id ?? event.organizer) === String(user.id));
+  const canChat = isAuthenticated && (event.myRegistration || canManage);
 
   return (
     <div className="event-page container">
@@ -221,7 +189,7 @@ export default function EventPage() {
             )}
             <a className="btn btn--secondary btn--sm" href={eventsApi.calendarUrl(event.id)}><CalendarPlus size={16} /> В календарь (.ics)</a>
             <button type="button" className="btn btn--secondary btn--sm" onClick={copyLink}><Link2 size={16} /> Скопировать ссылку</button>
-            {isAdmin && <Link className="btn btn--secondary btn--sm" to={`/admin/events/${event.id}/edit`}><Pencil size={16} /> Редактировать</Link>}
+            {canManage && <Link className="btn btn--secondary btn--sm" to={isAdmin ? `/admin/events/${event.id}/edit` : `/organizer/events/${event.id}/edit`}><Pencil size={16} /> Редактировать</Link>}
           </div>
 
           <section className="card prose">

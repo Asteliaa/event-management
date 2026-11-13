@@ -14,6 +14,8 @@ const base = {
     type: z.enum(Event.EVENT_TYPES),
     status: z.enum(Event.EVENT_STATUSES).optional(),
     category: recordId.nullable().optional(),
+    // владелец мероприятия: передать его может только администратор
+    organizer: recordId.optional(),
     startsAt: z.coerce.date({ message: 'Некорректная дата начала' }),
     endsAt: z.coerce.date().nullable().optional(),
     coverUrl: z.string().trim().url('Некорректная ссылка на обложку').or(z.literal('')).optional(),
@@ -45,8 +47,9 @@ const list = z.object({
     sort: z.enum(['date', '-date', 'popular', 'new']).default('date')
 });
 
+// Одна регистрация – одно место: поле tickets больше не используется; для совместимости принимается только 1
 const register = z.object({
-    tickets: z.number().int().min(1).max(10).default(1),
+    tickets: z.literal(1, { message: 'Одна регистрация – одно место: поле tickets больше не поддерживается' }).optional(),
     comment: z.string().trim().max(300).optional()
 });
 

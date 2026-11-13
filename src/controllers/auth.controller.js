@@ -2,10 +2,24 @@ const authService = require('../services/auth.service');
 const userService = require('../services/user.service');
 const registrationService = require('../services/registration.service');
 const accountService = require('../services/account.service');
+const passwordReset = require('../services/password-reset.service');
 const notify = require('../socket/notify');
 
 const register = async (req, res) => res.status(201).json(await authService.register(req.body));
 const login = async (req, res) => res.json(await authService.login(req.body));
+// 202 и одинаковый текст для любого адреса: по ответу нельзя узнать, есть ли аккаунт.
+// Письмо отправляется в фоне, сбой SMTP не меняет ответ
+const forgotPassword = async (req, res) => {
+    await passwordReset.requestReset(req.body);
+    res.status(202).json({ message: 'Если аккаунт с этим адресом существует, мы отправили письмо со ссылкой для сброса пароля' });
+};
+
+// Новый пароль по токену. Автоматического входа нет: все сеансы завершаются, дальше – обычный вход
+const resetPassword = async (req, res) => {
+    await passwordReset.resetPassword(req.body);
+    res.json({ message: 'Пароль изменен. Войдите с новым паролем' });
+};
+
 const me = async (req, res) => res.json(await authService.getMe(req.user.id));
 const updateMe = async (req, res) => res.json(await authService.updateProfile(req.user.id, req.body));
 
@@ -42,5 +56,6 @@ const deleteMe = async (req, res) => {
 };
 
 module.exports = {
+    forgotPassword, resetPassword,
     register, login, me, updateMe, changePassword, myRegistrations, myFavorites, addFavorite, removeFavorite, deactivateMe, deleteMe
 };

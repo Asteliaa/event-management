@@ -8,7 +8,7 @@ process.env.DATABASE_URL = process.env.TEST_DATABASE_URL;
 const { sequelize, User, Event, Category } = require('../src/models');
 const { signToken } = require('../src/services/auth.service');
 
-const TABLES = ['notifications', 'favorites', 'messages', 'reminders', 'registrations', 'events', 'categories', 'users'];
+const TABLES = ['password_reset_tokens', 'notifications', 'favorites', 'messages', 'reminders', 'registrations', 'events', 'categories', 'users'];
 
 // Тестовая база PostgreSQL (tests/globalSetup.js): после каждого теста таблицы очищаются
 const useTestDB = () => {

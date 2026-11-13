@@ -19,6 +19,7 @@ erDiagram
     events ||--o{ messages : "event_id"
     users |o--o{ messages : "user_id"
     users ||--o{ favorites : "user_id"
+    users ||--o{ password_reset_tokens : "user_id"
     events ||--o{ favorites : "event_id"
 
     users {
@@ -112,6 +113,14 @@ erDiagram
         varchar author
         varchar text
         timestamptz deleted_at
+    }
+    password_reset_tokens {
+        bigint id PK
+        bigint user_id FK
+        char token_hash UK "SHA-256, сам токен не хранится"
+        timestamptz expires_at "30 минут"
+        timestamptz used_at
+        timestamptz revoked_at
     }
     favorites {
         bigint user_id PK, FK

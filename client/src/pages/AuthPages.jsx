@@ -88,6 +88,7 @@ function AuthForm({ mode }) {
         </Field>
 
         {formError && <p className="form-error" role="alert">{formError}</p>}
+        {!isRegister && <p className="auth__switch"><Link to="/forgot-password">Забыли пароль?</Link></p>}
         <button type="submit" className="btn btn--primary btn--block btn--lg" disabled={busy}>
           {busy ? 'Подождите…' : isRegister ? 'Зарегистрироваться' : 'Войти'}
         </button>
@@ -97,7 +98,7 @@ function AuthForm({ mode }) {
             ? <>Уже есть аккаунт? <Link to="/login" state={location.state}>Войти</Link></>
             : <>Нет аккаунта? <Link to="/register" state={location.state}>Зарегистрироваться</Link></>}
         </p>
-        {!isRegister && <p className="demo-hint">Для проверки: admin@events.local, пароль admin12345 (администратор) или anna@events.local, пароль user12345.</p>}
+        {!isRegister && <p className="demo-hint">Для проверки (после npm run seed): admin@demo.eventhub.local, пароль admin12345 (администратор) или anna@demo.eventhub.local, пароль user12345.</p>}
       </form>
     </div>
   );

@@ -38,6 +38,16 @@ services:
       CLIENT_URL: http://localhost
       SEED_ADMIN_EMAIL: ${SEED_ADMIN_EMAIL:-admin@demo.eventhub.local}
       SEED_ADMIN_PASSWORD: ${SEED_ADMIN_PASSWORD:?задайте SEED_ADMIN_PASSWORD в .env}
+      # адрес клиента для ссылок в письмах (доверенная конфигурация, не заголовок Host)
+      APP_URL: ${APP_URL:-http://localhost}
+      # SMTP для писем восстановления пароля. Пусто – письма не отправляются.
+      # Для разработки: SMTP_HOST=mailpit и запуск с профилем mail (см. сервис mailpit)
+      SMTP_HOST: ${SMTP_HOST:-}
+      SMTP_PORT: ${SMTP_PORT:-1025}
+      SMTP_SECURE: ${SMTP_SECURE:-false}
+      SMTP_USER: ${SMTP_USER:-}
+      SMTP_PASS: ${SMTP_PASS:-}
+      MAIL_FROM: ${MAIL_FROM:-EventHub <no-reply@eventhub.local>}
     ports:
       - "5000:5000"
     depends_on:
@@ -56,6 +66,18 @@ services:
     depends_on:
       backend:
         condition: service_healthy
+    networks:
+      - web
+
+  # Только для разработки: Mailpit принимает письма по SMTP (порт 1025 во внутренней сети web)
+  # и показывает их в веб-интерфейсе http://localhost:8025. Наружу письма не отправляет (пересылка не настроена).
+  # Запуск: SMTP_HOST=mailpit docker compose --profile mail up -d
+  mailpit:
+    image: axllent/mailpit:v1.27.1
+    restart: unless-stopped
+    profiles: [mail]
+    ports:
+      - "127.0.0.1:8025:8025"        # веб-интерфейс только с этого компьютера
     networks:
       - web
 

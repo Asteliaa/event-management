@@ -1,7 +1,8 @@
 const bcrypt = require('bcrypt');
 const jwt = require('jsonwebtoken');
 const config = require('../config');
-const { User } = require('../models');
+const { sequelize, User } = require('../models');
+const passwordReset = require('./password-reset.service');
 const ApiError = require('../utils/ApiError');
 
 // tv – версия токенов пользователя: после блокировки, деактивации, удаления или смены пароля
@@ -67,9 +68,13 @@ const changePassword = async (userId, { currentPassword, newPassword }) => {
         throw ApiError.badRequest('Текущий пароль указан неверно');
     }
     user.passwordHash = await bcrypt.hash(newPassword, config.bcryptRounds);
-    // другие сеансы (старые токены) завершаются, текущий получает новый токен
+    // другие сеансы (старые токены) завершаются, текущий получает новый токен;
+    // ссылки восстановления пароля, выданные раньше, перестают действовать
     user.tokenVersion += 1;
-    await user.save();
+    await sequelize.transaction(async (transaction) => {
+        await user.save({ transaction });
+        await passwordReset.revokeAll(user.id, transaction);
+    });
     return { token: signToken(user) };
 };
 

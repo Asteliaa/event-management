@@ -3,6 +3,7 @@ const crypto = require('crypto');
 const { Op, QueryTypes } = require('sequelize');
 const { sequelize, User, Event } = require('../models');
 const ApiError = require('../utils/ApiError');
+const passwordReset = require('./password-reset.service');
 const notify = require('../socket/notify');
 
 // Три разных действия с аккаунтом:
@@ -131,6 +132,8 @@ const anonymize = async (user, transaction) => {
             'ORGANIZER_HAS_FUTURE_EVENTS'
         );
     }
+    // действующие ссылки восстановления пароля больше не работают
+    await passwordReset.revokeAll(id, transaction);
 
     // будущие активные регистрации: отмена с освобождением мест (счетчик меняется в той же транзакции)
     const future = await sequelize.query(

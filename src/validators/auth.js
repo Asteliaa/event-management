@@ -24,4 +24,13 @@ const changePassword = z.object({
 // подтверждение необратимых и чувствительных действий с аккаунтом
 const confirmPassword = z.object({ password: z.string().min(1, 'Введите пароль') });
 
-module.exports = { register, login, updateProfile, changePassword, confirmPassword };
+// восстановление пароля: запрос письма и установка нового пароля по токену из ссылки
+const forgotPassword = z.object({ email });
+const resetPassword = z.object({
+    // base64url-строка из 32 байт (43 символа); значение токена в сообщения об ошибках не попадает
+    token: z.string().regex(/^[A-Za-z0-9_-]{43}$/, 'Некорректная ссылка для сброса пароля'),
+    password,
+    passwordConfirm: z.string()
+}).refine((v) => v.password === v.passwordConfirm, { message: 'Пароли не совпадают', path: ['passwordConfirm'] });
+
+module.exports = { register, login, updateProfile, changePassword, confirmPassword, forgotPassword, resetPassword };

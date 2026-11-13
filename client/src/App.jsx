@@ -6,6 +6,7 @@ import HomePage from './pages/HomePage.jsx';
 import CatalogPage from './pages/CatalogPage.jsx';
 import EventPage from './pages/EventPage.jsx';
 import { LoginPage, RegisterPage } from './pages/AuthPages.jsx';
+import { ForgotPasswordPage, ResetPasswordPage } from './pages/PasswordRecoveryPages.jsx';
 import ProfileLayout, { MyFavorites, MyRegistrations, MyReminders, ProfileSettings } from './pages/ProfilePage.jsx';
 import { AboutPage, NotFoundPage } from './pages/MiscPages.jsx';
 import NotificationsPage from './pages/NotificationsPage.jsx';
@@ -28,6 +29,9 @@ export default function App() {
         <Route path="events" element={<CatalogPage />} />
         <Route path="events/:id" element={<EventPage />} />
         <Route path="about" element={<AboutPage />} />
+        {/* восстановление пароля доступно и вошедшему пользователю: ссылка из письма открывается где угодно */}
+        <Route path="forgot-password" element={<ForgotPasswordPage />} />
+        <Route path="reset-password" element={<ResetPasswordPage />} />
 
         <Route element={<GuestRoute />}>
           <Route path="login" element={<LoginPage />} />

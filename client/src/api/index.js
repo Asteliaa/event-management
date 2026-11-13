@@ -7,6 +7,9 @@ const data = (res) => res.data;
 export const authApi = {
   login: (body) => api.post('/auth/login', body).then(data),
   register: (body) => api.post('/auth/register', body).then(data),
+  // восстановление пароля: ответ одинаков для любого адреса; сброс не выполняет вход
+  forgotPassword: (email) => api.post('/auth/password/forgot', { email }).then(data),
+  resetPassword: (body) => api.post('/auth/password/reset', body).then(data),
   me: () => api.get('/auth/me').then(data),
   updateProfile: (body) => api.patch('/auth/me', body).then(data),
   // ответ – новый токен: прежние токены и соединения других сеансов перестают действовать

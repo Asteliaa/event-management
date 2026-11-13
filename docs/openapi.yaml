@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: EventHub API
-  version: 2.1.0
+  version: 2.2.0
   description: |
     REST API веб-приложения для организации конференций, вебинаров и встреч
     с регистрацией участников и напоминаниями (курсовая работа, тема №11).
@@ -320,6 +320,48 @@ paths:
         '401': { description: Неверный email или пароль (в том числе удаленный аккаунт) }
         '403': { description: Аккаунт заблокирован или деактивирован администратором (ACCOUNT_DEACTIVATED) }
         '429': { $ref: '#/components/responses/Error' }
+  /auth/password/forgot:
+    post:
+      tags: [Auth]
+      summary: Запросить письмо со ссылкой восстановления пароля
+      description: |
+        Ответ 202 одинаков для существующего и неизвестного адреса; письмо отправляется в фоне, сбой SMTP ответ не меняет.
+        Письмо получает только активный или деактивированный самим пользователем аккаунт (не заблокированный и не удаленный).
+        Ссылка: APP_URL/reset-password#token=… (токен 256 бит, срок 30 минут, одноразовый; новый запрос отзывает прежний).
+        Ограничения: 10 запросов с IP за 15 минут, 3 письма на адрес за час.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { type: object, required: [email], properties: { email: { type: string, format: email } } }
+      responses:
+        '202': { description: Принято (одинаковый ответ), content: { application/json: { schema: { type: object, properties: { message: { type: string } } } } } }
+        '422': { $ref: '#/components/responses/Error' }
+        '429': { description: Превышено ограничение частоты (TOO_MANY_REQUESTS) }
+  /auth/password/reset:
+    post:
+      tags: [Auth]
+      summary: Задать новый пароль по токену из письма
+      description: |
+        Погашение токена и смена пароля выполняются атомарно (из параллельных запросов с одним токеном успешен один).
+        Все сеансы завершаются (token_version + 1), отправляется письмо «пароль изменен» без пароля. Вход не выполняется.
+        Деактивированный самим пользователем аккаунт остается деактивированным до следующего входа.
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [token, password, passwordConfirm]
+              properties:
+                token: { type: string, description: base64url, 43 символа }
+                password: { type: string, minLength: 8, maxLength: 72 }
+                passwordConfirm: { type: string }
+      responses:
+        '200': { description: Пароль изменен, content: { application/json: { schema: { type: object, properties: { message: { type: string } } } } } }
+        '400': { description: 'Токен неизвестен, просрочен, использован или отозван, либо аккаунту восстановление недоступно (INVALID_RESET_TOKEN)' }
+        '422': { description: Ошибка валидации (в том числе пароли не совпадают) }
+        '429': { description: Превышено ограничение частоты (TOO_MANY_REQUESTS) }
   /auth/me:
     get:
       tags: [Auth]

@@ -171,7 +171,7 @@ async function seed() {
             await reminderService.createAuto(registration, event, transaction);
         }
         // посещенное прошедшее мероприятие
-        await Registration.create({ userId: anna.id, eventId: events[11].id, status: 'attended' }, { transaction });
+        await Registration.create({ userId: anna.id, eventId: events[11].id, attended: true, attendanceMarkedAt: events[11].startsAt }, { transaction });
         // счетчик мест = сумма билетов активных регистраций
         await sequelize.query(
             `UPDATE events e SET seats_taken = r.seats

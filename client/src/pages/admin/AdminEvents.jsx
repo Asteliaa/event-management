@@ -1,6 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router';
-import { Eye, Pencil, Plus, Search, Trash2, Users } from 'lucide-react';
+import { ArrowRightLeft, Eye, Pencil, Plus, Search, Trash2, Users } from 'lucide-react';
 import { useFetch } from '../../hooks/useFetch.js';
 import { useDebounce } from '../../hooks/useDebounce.js';
 import { useDocumentTitle } from '../../hooks/useDocumentTitle.js';
@@ -9,6 +9,7 @@ import { getErrorMessage } from '../../api/client.js';
 import { useNotifications } from '../../context/NotificationContext.jsx';
 import { ConfirmDialog, ErrorState, Pagination, Spinner } from '../../components/ui/index.jsx';
 import ParticipantsModal from '../../components/events/ParticipantsModal.jsx';
+import TransferModal from '../../components/events/TransferModal.jsx';
 import { EVENT_STATUS_LABELS, TYPE_LABELS, formatShort, formatTime } from '../../utils/format.js';
 
 export default function AdminEvents() {
@@ -20,6 +21,7 @@ export default function AdminEvents() {
   const debounced = useDebounce(search);
   const [toDelete, setToDelete] = useState(null);
   const [participants, setParticipants] = useState(null);
+  const [transfer, setTransfer] = useState(null);
   const [busy, setBusy] = useState(false);
   const { data, loading, error, reload } = useFetch(
     // все мероприятия, включая черновики и отмененные (каталог показывает только опубликованные)
@@ -77,6 +79,7 @@ export default function AdminEvents() {
                     <Link to={`/events/${e.id}`} className="icon-btn icon-btn--sm" title="Открыть"><Eye size={16} /></Link>
                     <button type="button" className="icon-btn icon-btn--sm" title="Участники" onClick={() => setParticipants(e)}><Users size={16} /></button>
                     <Link to={`/admin/events/${e.id}/edit`} className="icon-btn icon-btn--sm" title="Редактировать"><Pencil size={16} /></Link>
+                    {e.status !== 'cancelled' && <button type="button" className="icon-btn icon-btn--sm" title="Передать" onClick={() => setTransfer(e)}><ArrowRightLeft size={16} /></button>}
                     {e.status === 'draft' && <button type="button" className="icon-btn icon-btn--sm icon-btn--danger" title="Удалить черновик" onClick={() => setToDelete(e)}><Trash2 size={16} /></button>}
                   </td>
                 </tr>
@@ -99,6 +102,7 @@ export default function AdminEvents() {
         />
       )}
       {participants && <ParticipantsModal event={participants} onClose={() => setParticipants(null)} />}
+      {transfer && <TransferModal event={transfer} onClose={() => setTransfer(null)} onDone={() => { setTransfer(null); reload(); }} />}
     </div>
   );
 }

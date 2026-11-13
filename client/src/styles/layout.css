@@ -205,8 +205,9 @@
   .points { margin-top: var(--sp-6); }
 }
 
-/* ---------- Телефон ---------- */
-@media (max-width: 720px) {
+/* Меню-«бургер» уже на планшете: у вошедшего пользователя пункты навигации и действия шапки
+   не помещаются в строку шириной меньше 900px */
+@media (max-width: 900px) {
   .header__inner { gap: var(--sp-3); }
   .burger { display: inline-flex; }
   .nav {
@@ -217,6 +218,10 @@
   .nav.is-open { display: flex; }
   .nav__link { height: var(--control-lg); padding: 0 var(--sp-3); font-size: var(--fs-md); }
   .nav__link--mobile { display: inline-flex; }
+}
+
+/* ---------- Телефон ---------- */
+@media (max-width: 720px) {
   .footer__inner { flex-direction: column; align-items: flex-start; }
   .home-hero h1 { font-size: 1.75rem; }
   .search--hero .btn { padding: 0 var(--sp-4); }

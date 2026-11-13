@@ -157,18 +157,22 @@ const cancelForEvent = (eventId, transaction) => Reminder.update(
 // Возвращает id созданных уведомлений (отправка в Socket.IO – после фиксации)
 const takeDue = (now = new Date(), batch = 100) => sequelize.transaction(async (transaction) => {
     // наступившие напоминания, которые отправлять уже не нужно, помечаются skipped:
-    // пользователь заблокирован или деактивирован (после возврата аккаунта старые напоминания не приходят задним числом)
-    // либо мероприятие уже началось (например, сервер не работал в момент отправки)
+    // мероприятие уже началось (сервер не работал в момент отправки, пользователь был деактивирован) –
+    // event_started; пользователь заблокирован или удален – user_inactive.
+    // Напоминания деактивированного пользователя не отправляются, но и не пропускаются: после восстановления
+    // аккаунта наступившее напоминание приходит один раз (с признаком delayed), если мероприятие еще не началось
     await sequelize.query(
         `UPDATE reminders rm SET status = 'skipped', updated_at = now(),
-             cancel_reason = CASE WHEN u.blocked OR u.status <> 'active' THEN 'user_inactive' ELSE 'event_started' END
+             cancel_reason = CASE WHEN e.starts_at <= :now THEN 'event_started' ELSE 'user_inactive' END
          FROM users u, events e
          WHERE rm.user_id = u.id AND rm.event_id = e.id AND rm.status = 'pending' AND rm.remind_at <= :now
-           AND (u.blocked OR u.status <> 'active' OR e.starts_at <= :now)`,
+           AND (u.blocked OR u.status = 'deleted' OR e.starts_at <= :now)`,
         { replacements: { now }, transaction }
     );
     const due = await sequelize.query(
-        `SELECT rm.id, rm.user_id, rm.event_id, rm.registration_id, rm.offset_minutes, rm.schedule_version
+        `SELECT rm.id, rm.user_id, rm.event_id, rm.registration_id, rm.offset_minutes, rm.schedule_version,
+                rm.remind_at < CAST(:now AS timestamptz) - interval '15 minutes' AS delayed,
+                rm.remind_at, e.starts_at, e.timezone
          FROM reminders rm
          JOIN events e ON e.id = rm.event_id
          JOIN registrations reg ON reg.id = rm.registration_id
@@ -191,10 +195,15 @@ const takeDue = (now = new Date(), batch = 100) => sequelize.transaction(async (
     const rows = await sequelize.query(
         `INSERT INTO notifications (user_id, type, event_id, registration_id, reminder_id, payload, dedup_key)
          SELECT d.user_id, 'reminder', d.event_id, d.registration_id, d.id,
-                jsonb_build_object('offsetMinutes', d.offset_minutes, 'scheduleVersion', d.schedule_version),
+                jsonb_build_object('offsetMinutes', d.offset_minutes, 'scheduleVersion', d.schedule_version)
+                    -- задержанное напоминание: актуальное начало и исходное время напоминания,
+                    -- чтобы клиент не показывал устаревшее «за час до начала»
+                    || CASE WHEN d.delayed THEN jsonb_build_object('delayed', true, 'remindAt', d.remind_at,
+                           'startsAt', d.starts_at, 'timezone', d.timezone) ELSE '{}'::jsonb END,
                 'reminder:' || d.id || ':v' || d.schedule_version
          FROM jsonb_to_recordset(CAST(:due AS jsonb))
-              AS d(id bigint, user_id bigint, event_id bigint, registration_id bigint, offset_minutes int, schedule_version int)
+              AS d(id bigint, user_id bigint, event_id bigint, registration_id bigint, offset_minutes int, schedule_version int,
+                   delayed boolean, remind_at timestamptz, starts_at timestamptz, timezone text)
          ON CONFLICT (user_id, dedup_key) DO NOTHING
          RETURNING id`,
         { replacements: { due: JSON.stringify(due) }, type: QueryTypes.SELECT, transaction }

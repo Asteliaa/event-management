@@ -47,6 +47,9 @@
   "homepage": "https://github.com/Asteliaa/event-management#readme",
   "jest": {
     "testEnvironment": "node",
+    "roots": [
+      "<rootDir>/tests"
+    ],
     "collectCoverageFrom": [
       "src/**/*.js"
     ],

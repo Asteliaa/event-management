@@ -8,7 +8,7 @@ import { getErrorMessage, getFieldErrors } from '../../api/client.js';
 import { useNotifications } from '../../context/NotificationContext.jsx';
 import EventRow from '../../components/events/EventCard.jsx';
 import { Field, Spinner } from '../../components/ui/index.jsx';
-import { EVENT_STATUS_LABELS, TYPE_LABELS, browserTimeZone, fromZonedInput, toZonedInput } from '../../utils/format.js';
+import { EVENT_STATUS_LABELS, TYPE_LABELS, browserTimeZone, fromZonedInput, toZonedInput, zonedInputIssue } from '../../utils/format.js';
 
 // Список IANA-поясов браузера (если недоступен – только пояс пользователя и UTC)
 const TIME_ZONES = typeof Intl.supportedValuesOf === 'function' ? Intl.supportedValuesOf('timeZone') : [browserTimeZone(), 'UTC'];
@@ -68,12 +68,35 @@ export default function EventFormPage() {
   // У существующего состояние меняется действиями на странице мероприятия и в списке
   async function handleSubmit(e, publish = false) {
     e.preventDefault();
+    // несуществующее местное время (перевод часов вперед) не сохраняется – см. zonedInputIssue
+    const zoneErrors = Object.fromEntries(['startsAt', 'endsAt', 'registrationDeadline']
+      .map((k) => [k, zonedInputIssue(form[k], form.timezone).error]).filter(([, v]) => v));
+    if (Object.keys(zoneErrors).length) {
+      setErrors(zoneErrors);
+      notify('Проверьте время: в этот день в выбранном поясе переводятся часы', 'error');
+      return;
+    }
     setBusy(true);
     setErrors({});
     try {
       const body = toBody(form);
-      const saved = isEdit ? await eventsApi.update(id, body) : await eventsApi.create({ ...body, status: publish ? 'published' : 'draft' });
-      notify(isEdit ? 'Изменения сохранены' : publish ? 'Мероприятие опубликовано' : 'Черновик сохранен', 'success');
+      if (isEdit) {
+        // отправляются только измененные поля: форма хранит время с точностью до минуты, и повторная
+        // отправка неизмененного начала не должна считаться переносом
+        const initial = toBody(toForm(existing.data));
+        const changes = Object.fromEntries(Object.entries(body).filter(([k, v]) => JSON.stringify(v) !== JSON.stringify(initial[k])));
+        if (!Object.keys(changes).length) {
+          notify('Изменений нет', 'info');
+          navigate(`/events/${id}`);
+          return;
+        }
+        const saved = await eventsApi.update(id, changes);
+        notify('Изменения сохранены', 'success');
+        navigate(`/events/${saved.id}`);
+        return;
+      }
+      const saved = await eventsApi.create({ ...body, status: publish ? 'published' : 'draft' });
+      notify(publish ? 'Мероприятие опубликовано' : 'Черновик сохранен', 'success');
       navigate(`/events/${saved.id}`);
     } catch (err) {
       const fieldErrors = getFieldErrors(err);
@@ -85,6 +108,15 @@ export default function EventFormPage() {
   }
 
   if (isEdit && existing.loading) return <Spinner />;
+
+  // После начала опубликованного мероприятия часть полей зафиксирована (то же проверяет сервер):
+  // идет – нельзя менять начало, пояс, вместимость, регистрацию и формат, окончание – только продлить;
+  // завершено – можно исправить только описание
+  const phase = existing.data?.status === 'published' ? existing.data.phase : null;
+  const live = phase === 'live';
+  const finished = phase === 'finished';
+  const locked = live || finished;
+  const zoneHint = (key) => zonedInputIssue(form[key], form.timezone);
 
   const preview = {
     ...toBody(form), id: 'preview', startsAt: toBody(form).startsAt || new Date().toISOString(),
@@ -109,23 +141,27 @@ export default function EventFormPage() {
           )}
         </div>
       </div>
-      {isEdit && existing.data?.status === 'published' && (
+      {isEdit && existing.data?.status === 'published' && phase === 'upcoming' && (
         <p className="notice">Изменение начала или окончания – перенос: участники получат уведомление, напоминания пересчитаются.</p>
       )}
+      {live && (
+        <p className="notice">Мероприятие идет: начало, часовой пояс, вместимость, регистрацию и формат изменить нельзя. Окончание можно продлить, место и ссылку – исправить; участники получат уведомление.</p>
+      )}
+      {finished && <p className="notice">Мероприятие завершено: можно исправить только описание.</p>}
 
       <div className="form-layout">
         <div className="card panel form">
           <h3 className="form__section-title">Основное</h3>
-          <Field label="Название *" error={errors.title}><input value={form.title} onChange={set('title')} required /></Field>
+          <Field label="Название *" error={errors.title}><input value={form.title} onChange={set('title')} required disabled={finished} /></Field>
           <Field label="Описание" error={errors.description}><textarea rows={6} value={form.description} onChange={set('description')} /></Field>
           <div className="form__row">
             <Field label="Формат *" error={errors.type}>
-              <select value={form.type} onChange={set('type')}>
+              <select value={form.type} onChange={set('type')} disabled={locked}>
                 {Object.entries(TYPE_LABELS).map(([v, l]) => <option key={v} value={v}>{l}</option>)}
               </select>
             </Field>
             <Field label="Категория" error={errors.category}>
-              <select value={form.category} onChange={set('category')}>
+              <select value={form.category} onChange={set('category')} disabled={finished}>
                 <option value="">Без категории</option>
                 {categories?.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
               </select>
@@ -134,43 +170,47 @@ export default function EventFormPage() {
           <div className="form__section">
             <h3 className="form__section-title">Дата и участники</h3>
             <Field label="Часовой пояс мероприятия *" error={errors.timezone} hint="Время ниже указывается по этому поясу">
-              <select value={form.timezone} onChange={set('timezone')}>
+              <select value={form.timezone} onChange={set('timezone')} disabled={locked}>
                 {TIME_ZONES.map((tz) => <option key={tz} value={tz}>{tz}</option>)}
               </select>
             </Field>
             <div className="form__row">
-              <Field label="Начало" error={errors.startsAt} hint="Обязательно для публикации"><input type="datetime-local" value={form.startsAt} onChange={set('startsAt')} /></Field>
-              <Field label="Окончание" error={errors.endsAt} hint="Обязательно для публикации"><input type="datetime-local" value={form.endsAt} onChange={set('endsAt')} /></Field>
+              <Field label="Начало" error={errors.startsAt || zoneHint('startsAt').error} hint={zoneHint('startsAt').hint || 'Обязательно для публикации'}>
+                <input type="datetime-local" value={form.startsAt} onChange={set('startsAt')} disabled={locked} />
+              </Field>
+              <Field label="Окончание" error={errors.endsAt || zoneHint('endsAt').error} hint={zoneHint('endsAt').hint || (live ? 'Можно только продлить' : 'Обязательно для публикации')}>
+                <input type="datetime-local" value={form.endsAt} onChange={set('endsAt')} disabled={finished} />
+              </Field>
             </div>
             <div className="form__row">
               <Field label="Вместимость" error={errors.capacity} hint="Пусто – без ограничений">
-                <input type="number" min="1" value={form.capacity} onChange={set('capacity')} />
+                <input type="number" min="1" value={form.capacity} onChange={set('capacity')} disabled={locked} />
               </Field>
-              <Field label="Регистрация до" error={errors.registrationDeadline} hint="Пусто – до начала">
-                <input type="datetime-local" value={form.registrationDeadline} onChange={set('registrationDeadline')} />
+              <Field label="Регистрация до" error={errors.registrationDeadline || zoneHint('registrationDeadline').error} hint={zoneHint('registrationDeadline').hint || 'Пусто – до начала'}>
+                <input type="datetime-local" value={form.registrationDeadline} onChange={set('registrationDeadline')} disabled={locked} />
               </Field>
             </div>
-            <label className="checkbox"><input type="checkbox" checked={form.registrationOpen} onChange={set('registrationOpen')} /> Регистрация открыта</label>
+            <label className="checkbox"><input type="checkbox" checked={form.registrationOpen} onChange={set('registrationOpen')} disabled={locked} /> Регистрация открыта</label>
           </div>
           <div className="form__section">
             <h3 className="form__section-title">Место проведения</h3>
-            <label className="checkbox"><input type="checkbox" checked={form.online} onChange={set('online')} /> Онлайн-мероприятие</label>
+            <label className="checkbox"><input type="checkbox" checked={form.online} onChange={set('online')} disabled={locked} /> Онлайн-мероприятие</label>
             {form.online ? (
               <Field label="Ссылка подключения" error={errors.url} hint="Видят только записавшиеся участники, организатор и администратор">
-                <input value={form.url} onChange={set('url')} placeholder="https://" />
+                <input value={form.url} onChange={set('url')} placeholder="https://" disabled={finished} />
               </Field>
             ) : (
               <div className="form__row">
-                <Field label="Город" error={errors.city}><input value={form.city} onChange={set('city')} /></Field>
-                <Field label="Место проведения" error={errors.venue}><input value={form.venue} onChange={set('venue')} /></Field>
+                <Field label="Город" error={errors.city}><input value={form.city} onChange={set('city')} disabled={finished} /></Field>
+                <Field label="Место проведения" error={errors.venue}><input value={form.venue} onChange={set('venue')} disabled={finished} /></Field>
               </div>
             )}
           </div>
           <div className="form__section">
             <h3 className="form__section-title">Дополнительно</h3>
-            <Field label="Теги" hint="Через запятую: react, frontend" error={errors.tags}><input value={form.tags} onChange={set('tags')} /></Field>
+            <Field label="Теги" hint="Через запятую: react, frontend" error={errors.tags}><input value={form.tags} onChange={set('tags')} disabled={finished} /></Field>
             <Field label="Обложка (ссылка на изображение)" hint="Необязательно" error={errors.coverUrl}>
-              <input value={form.coverUrl} onChange={set('coverUrl')} placeholder="https://" />
+              <input value={form.coverUrl} onChange={set('coverUrl')} placeholder="https://" disabled={finished} />
             </Field>
           </div>
         </div>

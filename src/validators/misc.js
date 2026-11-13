@@ -7,10 +7,16 @@ const category = z.object({
     description: z.string().max(300).optional()
 });
 
+// Отметка о посещении (attended) и комментарий участника; отмена – отдельным запросом DELETE
 const registrationUpdate = z.object({
-    status: z.enum(Registration.STATUSES).optional(),
+    attended: z.boolean().optional(),
     comment: z.string().trim().max(300).optional()
-}).refine((v) => Object.keys(v).length, 'Передайте хотя бы одно поле');
+}).strict().refine((v) => Object.keys(v).length, 'Передайте хотя бы одно поле');
+
+// Причина отмены участия: обязательна для организатора и администратора (проверяет сервис)
+const registrationCancel = z.object({
+    reason: z.string().trim().min(3, 'Причина не короче 3 символов').max(500).optional()
+});
 
 const reminderCreate = z.object({
     event: recordId,
@@ -50,7 +56,7 @@ const userUpdate = z.object({
 const registrationList = z.object({
     format: z.enum(['json', 'csv']).default('json'),
     // all – все, включая отмененные (история); active – неотмененные
-    status: z.enum(['all', 'active', ...Registration.STATUSES]).default('all')
+    status: z.enum(['all', 'active', 'attended', ...Registration.STATUSES]).default('all')
 });
 
 const managedList = z.object({
@@ -67,6 +73,7 @@ const myRegistrations = z.object({
 });
 
 module.exports = {
+    registrationCancel,
     category, registrationUpdate, reminderCreate, reminderUpdate, reminderList,
     userList, userUpdate, registrationList, managedList, myRegistrations, notificationList, notificationUpdate
 };

@@ -189,8 +189,8 @@ a.event-row:hover .event-row__title { color: var(--primary); }
 .pagination__gap { color: var(--muted); padding: 0 var(--sp-1); }
 
 /* ---------- Модальное окно ---------- */
-.modal { position: fixed; inset: 0; z-index: 100; display: grid; place-items: center; padding: var(--sp-4); background: rgb(15 23 42 / .5); }
-.modal__box { width: min(620px, 100%); max-height: calc(100vh - 32px); display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); }
+.modal { position: fixed; inset: 0; z-index: 100; display: grid; grid-template-columns: minmax(0, 1fr); place-items: center; padding: var(--sp-4); background: rgb(15 23 42 / .5); }
+.modal__box { width: min(620px, 100%); min-width: 0; max-height: calc(100vh - 32px); display: flex; flex-direction: column; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); box-shadow: var(--shadow-lg); }
 .modal__header, .modal__footer { display: flex; align-items: center; justify-content: space-between; gap: var(--sp-3); padding: var(--sp-4) var(--sp-5); }
 .modal__header { border-bottom: 1px solid var(--border); }
 .modal__header h3 { margin: 0; font-size: var(--fs-md); }

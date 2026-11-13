@@ -88,8 +88,8 @@ const getById = async (id, user) => {
             myReminders: reminders.map((r) => r.toJSON()),
             isFavorite: favorite > 0
         };
-        // ссылка подключения – активному участнику опубликованного мероприятия
-        if (registration && event.status === 'published') event.revealLink();
+        // ссылка подключения – активному участнику опубликованного мероприятия, пока оно не завершилось
+        if (registration && event.status === 'published' && event.phase !== 'finished') event.revealLink();
     }
     if (canManage) event.revealLink();
     return { ...event.toJSON(), canManage, ...extra };
@@ -165,6 +165,63 @@ const assertPublishable = (e) => {
     if (details.length) throw validationError(details);
 };
 
+// Полная проверка при публикации (в том числе повторной – после снятия с публикации):
+// требования публикации, порядок дат, начало в будущем, срок регистрации еще не истек
+const assertCanPublishNow = (e) => {
+    const details = publicationErrors(e);
+    const now = new Date();
+    if (e.startsAt && e.startsAt <= now) details.push({ field: 'body.startsAt', message: 'Начало должно быть в будущем' });
+    if (e.registrationDeadline && e.registrationDeadline <= now) {
+        details.push({ field: 'body.registrationDeadline', message: 'Срок регистрации уже истек' });
+    }
+    if (e.registrationDeadline && e.startsAt && e.registrationDeadline > e.startsAt) {
+        details.push({ field: 'body.registrationDeadline', message: 'Срок регистрации не может быть позже начала' });
+    }
+    if (details.length) throw validationError(details);
+};
+
+// Что можно менять у опубликованного мероприятия после начала.
+// Идет: начало, часовой пояс, формат, вместимость и параметры регистрации зафиксированы; окончание можно
+// только продлить; место и ссылку можно исправить (участники получают уведомление).
+// Завершено: можно исправить только описание (и передать мероприятие – это делает администратор)
+const EDITABLE_AFTER_START = {
+    live: ['title', 'description', 'coverUrl', 'tags', 'categoryId', 'organizerId', 'endsAt', 'locationCity', 'locationVenue', 'locationUrl'],
+    finished: ['description', 'organizerId']
+};
+
+const ATTR_FIELDS = { categoryId: 'category', organizerId: 'organizer', locationCity: 'location.city',
+    locationVenue: 'location.venue', locationOnline: 'location.online', locationUrl: 'location.url' };
+
+const comparable = (v) => {
+    if (v === null || v === undefined || v === '') return null;
+    if (v instanceof Date) return v.getTime();
+    if (typeof v === 'object') return JSON.stringify(v);
+    return String(v);
+};
+
+// Атрибуты запроса, значение которых действительно отличается от текущего
+// (клиент может прислать форму целиком, вместе с неизменными полями)
+const changedAttributes = (event, attrs) => Object.keys(attrs).filter((k) => comparable(event.get(k)) !== comparable(attrs[k]));
+
+const assertEditableAfterStart = (event, attrs) => {
+    const phase = event.phase;
+    if (event.status !== 'published' || !phase || phase === 'upcoming') return;
+    const changed = changedAttributes(event, attrs);
+    const locked = changed.filter((k) => !EDITABLE_AFTER_START[phase].includes(k));
+    if (locked.length) {
+        const message = phase === 'live'
+            ? 'Мероприятие уже идет: начало, часовой пояс, формат, вместимость и регистрацию изменить нельзя'
+            : 'Мероприятие завершено: можно исправить только описание';
+        throw new ApiError(409, message, {
+            code: phase === 'live' ? 'EVENT_STARTED' : 'EVENT_FINISHED',
+            details: locked.map((k) => ({ field: `body.${ATTR_FIELDS[k] || k}`, message: 'Поле нельзя изменить' }))
+        });
+    }
+    if (phase === 'live' && changed.includes('endsAt') && !(attrs.endsAt && attrs.endsAt > event.endsAt)) {
+        throw validationError([{ field: 'body.endsAt', message: 'Окончание идущего мероприятия можно только продлить' }]);
+    }
+};
+
 // Результат действий владельца или администратора: ссылка подключения им доступна
 const reload = async (id) => (await Event.findByPk(id, {
     include: [includeCategory, { association: 'organizer', attributes: ['id', 'name'] }]
@@ -178,8 +235,7 @@ const create = async (data, user) => {
     const event = Event.build(attrs);
     assertDates(event);
     if (event.status === 'published') {
-        assertPublishable(event);
-        if (event.startsAt <= new Date()) throw validationError([{ field: 'body.startsAt', message: 'Начало должно быть в будущем' }]);
+        assertCanPublishNow(event);
         event.publishedAt = new Date();
     }
     await event.save();
@@ -207,6 +263,8 @@ const update = async (id, data, user) => {
             throw ApiError.conflict(`Вместимость не может быть меньше числа занятых мест (${event.seatsTaken})`, 'CAPACITY_TOO_SMALL');
         }
 
+        assertEditableAfterStart(event, attrs);
+
         const before = { startsAt: event.startsAt, endsAt: event.endsAt, phase: event.phase };
         const beforeOwner = event.organizerId;
         const beforeLocation = Object.fromEntries(LOCATION_ATTRS.map((a) => [a, event.get(a)]));
@@ -218,9 +276,6 @@ const update = async (id, data, user) => {
             assertPublishable(event);
             const scheduleChanged = !sameTime(before.startsAt, event.startsAt) || !sameTime(before.endsAt, event.endsAt);
             if (scheduleChanged) {
-                if (before.phase === 'finished') {
-                    throw ApiError.conflict('Расписание завершенного мероприятия не изменяется', 'EVENT_FINISHED');
-                }
                 if (!sameTime(before.startsAt, event.startsAt) && event.startsAt <= new Date()) {
                     throw validationError([{ field: 'body.startsAt', message: 'Новое начало должно быть в будущем' }]);
                 }
@@ -233,6 +288,8 @@ const update = async (id, data, user) => {
                     eventId: event.id,
                     type: 'event_rescheduled',
                     payload: {
+                        // extended – идущее мероприятие продлено (начало не менялось)
+                        kind: before.phase === 'live' ? 'extended' : 'rescheduled',
                         startsAt: event.startsAt, endsAt: event.endsAt, timezone: event.timezone,
                         previousStartsAt: before.startsAt, previousEndsAt: before.endsAt, scheduleVersion: event.scheduleVersion
                     },
@@ -271,22 +328,27 @@ const withLockedEvent = (id, user, fn) => sequelize.transaction(async (transacti
     return fn(event, transaction);
 });
 
-// Публикация черновика: обязательны начало и окончание (начало – в будущем) и данные формата
+// Публикация черновика (в том числе повторная) – полная проверка: начало и окончание (начало – в будущем),
+// данные формата, срок регистрации не истек и не позже начала
 const publish = async (id, user) => {
     const eventId = await withLockedEvent(id, user, async (event, transaction) => {
         if (event.status !== 'draft') throw ApiError.conflict('Опубликовать можно только черновик', 'EVENT_NOT_DRAFT');
-        assertPublishable(event);
-        if (event.startsAt <= new Date()) throw validationError([{ field: 'body.startsAt', message: 'Начало должно быть в будущем' }]);
+        assertCanPublishNow(event);
         await event.update({ status: 'published', publishedAt: new Date() }, { transaction });
         return event.id;
     });
     return reload(eventId);
 };
 
-// Снятие с публикации (в черновик) – только пока никто не регистрировался
+// Снятие с публикации (в черновик) – исправление ошибочной публикации: только до начала и только если
+// на мероприятие никогда не регистрировались (отмененные регистрации тоже считаются). В остальных случаях
+// мероприятие отменяют. Повторная публикация проходит ту же проверку, что и первая
 const unpublish = async (id, user) => {
     const eventId = await withLockedEvent(id, user, async (event, transaction) => {
         if (event.status !== 'published') throw ApiError.conflict('Снять с публикации можно только опубликованное мероприятие', 'EVENT_NOT_PUBLISHED');
+        if (event.phase !== 'upcoming') {
+            throw ApiError.conflict('Мероприятие уже началось: снять его с публикации нельзя', 'EVENT_STARTED');
+        }
         if (await Registration.count({ where: { eventId: event.id }, transaction })) {
             throw ApiError.conflict('На мероприятие уже регистрировались: его можно только отменить', 'EVENT_HAS_REGISTRATIONS');
         }
@@ -296,13 +358,18 @@ const unpublish = async (id, user) => {
     return reload(eventId);
 };
 
-// Отмена опубликованного мероприятия: история регистраций сохраняется (регистрации остаются как были),
-// ожидающие напоминания отменяются, активные участники получают уведомление – в одной транзакции
+// Отмена опубликованного мероприятия: история регистраций сохраняется (регистрации и отметки
+// о посещении остаются как были), регистрация закрывается (бронь требует status = published),
+// ожидающие напоминания отменяются, активные участники получают уведомление – в одной транзакции.
+// Идущее мероприятие отменяется только с причиной
 const cancel = async (id, user, { reason } = {}) => {
     const { eventId, ids } = await withLockedEvent(id, user, async (event, transaction) => {
         if (event.status === 'cancelled') throw ApiError.conflict('Мероприятие уже отменено', 'EVENT_CANCELLED');
         if (event.status !== 'published') throw ApiError.conflict('Черновик не отменяют – его можно удалить', 'EVENT_NOT_PUBLISHED');
         if (event.phase === 'finished') throw ApiError.conflict('Завершенное мероприятие нельзя отменить', 'EVENT_FINISHED');
+        if (event.phase === 'live' && !reason) {
+            throw validationError([{ field: 'body.reason', message: 'Мероприятие уже идет: укажите причину отмены' }]);
+        }
         await event.update({ status: 'cancelled', cancelledAt: new Date(), cancelReason: reason || null }, { transaction });
         await reminderService.cancelForEvent(event.id, transaction);
         const created = await notificationService.createForEventParticipants({
@@ -350,7 +417,7 @@ const listManaged = async (user, query) => {
     const ids = rows.map((e) => e.id);
     const counts = ids.length ? await sequelize.query(
         `SELECT event_id, count(*) FILTER (WHERE status <> 'cancelled')::int AS active,
-                count(*) FILTER (WHERE status = 'attended')::int AS attended,
+                count(*) FILTER (WHERE attended)::int AS attended,
                 count(*) FILTER (WHERE status = 'cancelled')::int AS cancelled
          FROM registrations WHERE event_id IN (:ids) GROUP BY event_id`,
         { replacements: { ids }, type: QueryTypes.SELECT }
@@ -371,7 +438,7 @@ const stats = async (id, user) => {
     const [[totals], timeline] = await Promise.all([
         sequelize.query(
             `SELECT count(*) FILTER (WHERE status <> 'cancelled')::int AS active,
-                    count(*) FILTER (WHERE status = 'attended')::int AS attended,
+                    count(*) FILTER (WHERE attended)::int AS attended,
                     count(*) FILTER (WHERE status = 'cancelled')::int AS cancelled,
                     count(DISTINCT user_id)::int AS users
              FROM registrations WHERE event_id = :id`,

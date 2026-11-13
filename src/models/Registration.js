@@ -2,7 +2,8 @@ const { DataTypes, Model } = require('sequelize');
 const { sequelize } = require('../db');
 const { compact, ref } = require('./serialize');
 
-const REGISTRATION_STATUSES = ['registered', 'attended', 'cancelled'];
+// Посещение хранится отдельно (attended), статус – только активна или отменена
+const REGISTRATION_STATUSES = ['registered', 'cancelled'];
 
 // Регистрация пользователя на мероприятие (связь User — Event с атрибутами).
 // Одна регистрация – одно место. Активной (не cancelled) может быть только одна регистрация пары
@@ -22,6 +23,9 @@ class Registration extends Model {
             legacyTickets: v.legacyTickets,
             cancelledAt: v.cancelledAt,
             cancelledBy: v.cancelledBy,
+            cancelReason: v.cancelReason,
+            attended: v.attended,
+            attendanceMarkedAt: v.attendanceMarkedAt,
             createdAt: v.createdAt,
             updatedAt: v.updatedAt
         });
@@ -36,7 +40,11 @@ Registration.init({
     status: { type: DataTypes.TEXT, allowNull: false, defaultValue: 'registered', validate: { isIn: [REGISTRATION_STATUSES] } },
     comment: { type: DataTypes.STRING(300), allowNull: false, defaultValue: '' },
     cancelledAt: { type: DataTypes.DATE },
-    cancelledBy: { type: DataTypes.TEXT, validate: { isIn: [CANCELLED_BY] } }
+    cancelledBy: { type: DataTypes.TEXT, validate: { isIn: [CANCELLED_BY] } },
+    cancelReason: { type: DataTypes.STRING(500) },
+    attended: { type: DataTypes.BOOLEAN, allowNull: false, defaultValue: false },
+    attendanceMarkedAt: { type: DataTypes.DATE },
+    attendanceMarkedBy: { type: DataTypes.BIGINT }
 }, { sequelize, modelName: 'Registration', tableName: 'registrations' });
 
 Registration.STATUSES = REGISTRATION_STATUSES;

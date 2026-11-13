@@ -1,12 +1,13 @@
 # Модель данных EventHub
 
-Схема после миграций этапов А и Б (`migrations/`). Диаграмма в формате Mermaid отображается на GitHub и в редакторах с поддержкой Mermaid.
+Схема после миграций этапов А и Б и точки «Завершение функциональных сценариев» (`migrations/`). Диаграмма в формате Mermaid отображается на GitHub и в редакторах с поддержкой Mermaid.
 
 ```mermaid
 erDiagram
     users ||--o{ events : "организует (organizer_id)"
     categories |o--o{ events : "category_id"
     users ||--o{ registrations : "user_id"
+    users |o--o{ registrations : "attendance_marked_by"
     events ||--o{ registrations : "event_id"
     registrations ||--o{ reminders : "registration_id"
     users ||--o{ reminders : "user_id"
@@ -70,9 +71,13 @@ erDiagram
         bigint id PK
         bigint event_id FK
         bigint user_id FK
-        text status "registered | attended | cancelled"
+        text status "registered | cancelled"
+        boolean attended "посещение отдельно от статуса"
+        timestamptz attendance_marked_at
+        bigint attendance_marked_by FK
         timestamptz cancelled_at
         text cancelled_by "user | organizer | admin | system"
+        varchar cancel_reason
         varchar comment
         smallint legacy_tickets
     }
@@ -120,6 +125,7 @@ erDiagram
 |---|---|---|
 | registrations | Не больше одной активной регистрации пользователя на мероприятие | частичный уникальный индекс `(event_id, user_id) WHERE status <> 'cancelled'` |
 | registrations | Отмена всегда с отметкой времени | `CHECK ((status = 'cancelled') = (cancelled_at IS NOT NULL))` |
+| registrations | Статус только registered / cancelled; посещение – только у активной регистрации и с отметкой времени | CHECK `registrations_status_check`, `registrations_attendance_check` |
 | events | `0 ≤ seats_taken ≤ capacity` | CHECK; счетчик меняется атомарным UPDATE в транзакции регистрации |
 | events | Опубликованное и отмененное мероприятие имеет дату начала; срок регистрации не позже начала; окончание позже начала | CHECK |
 | reminders | Ожидающее напоминание привязано к регистрации; одно напоминание на смещение | CHECK `reminders_pending_has_registration`, частичный уникальный индекс `(registration_id, offset_minutes)` |

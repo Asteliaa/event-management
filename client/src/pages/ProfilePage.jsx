@@ -9,7 +9,7 @@ import { authApi, remindersApi } from '../api/index.js';
 import { getErrorMessage, getFieldErrors } from '../api/client.js';
 import EventRow, { DateBlock } from '../components/events/EventCard.jsx';
 import { EmptyState, ErrorState, Field, Modal, Spinner } from '../components/ui/index.jsx';
-import { STATUS_LABELS, TYPE_LABELS, formatDateTime, formatOffset, formatShort, formatTime, placeOf, timeUntil } from '../utils/format.js';
+import { ATTENDED_LABEL, STATUS_LABELS, TYPE_LABELS, formatDateTime, formatOffset, formatShort, formatTime, placeOf, timeUntil } from '../utils/format.js';
 
 const TABS = [
   { to: '/profile', label: 'Регистрации', icon: CalendarCheck, end: true },
@@ -70,8 +70,10 @@ export function MyRegistrations() {
               <p className="muted">{TYPE_LABELS[r.event.type]}, {formatTime(r.event.startsAt)}, {placeOf(r.event)}</p>
             </div>
             <div className="timeline__side">
-              <span className={`chip chip--status-${r.status}`}>{STATUS_LABELS[r.status]}</span>
-              <small className="muted">{r.status === 'cancelled' && r.cancelledAt ? `отменена ${formatShort(r.cancelledAt)}` : timeUntil(r.event.startsAt)}</small>
+              {r.attended
+                ? <span className="chip chip--status-attended">{ATTENDED_LABEL}</span>
+                : <span className={`chip chip--status-${r.status}`}>{STATUS_LABELS[r.status]}</span>}
+              <small className="muted">{r.status === 'cancelled' && r.cancelledAt ? `отменена ${formatShort(r.cancelledAt)}${r.cancelReason ? `: ${r.cancelReason}` : ''}` : timeUntil(r.event.startsAt)}</small>
             </div>
           </Link>
         ))}
@@ -232,8 +234,10 @@ const ACCOUNT_ACTIONS = {
   deactivate: {
     title: 'Деактивировать аккаунт',
     confirm: 'Деактивировать',
-    text: 'Вход и уведомления будут приостановлены, все сеансы завершатся. Данные и регистрации сохранятся. '
-      + 'Чтобы вернуть аккаунт, просто войдите с паролем.',
+    text: 'Вы выйдете со всех устройств, вход и уведомления будут приостановлены. Данные и регистрации сохранятся, '
+      + 'напоминания не будут приходить, пока аккаунт деактивирован. '
+      + 'Внимание: деактивация обратима – любой вход с вашим паролем сразу восстановит аккаунт. '
+      + 'Если хотите удалить данные навсегда, выберите «Удалить аккаунт».',
   },
   delete: {
     title: 'Удалить аккаунт',
@@ -280,7 +284,7 @@ function AccountActions() {
   return (
     <section className="card panel">
       <h3 className="panel__title">Аккаунт</h3>
-      <p className="muted">Деактивацию можно отменить входом. Удаление необратимо.</p>
+      <p className="muted">Деактивация обратима: следующий вход с паролем восстановит аккаунт. Удаление необратимо.</p>
       <div className="panel__footer">
         <button type="button" className="btn btn--ghost" onClick={() => setAction('deactivate')}>Деактивировать</button>
         <button type="button" className="btn btn--danger" onClick={() => setAction('delete')}>Удалить аккаунт</button>

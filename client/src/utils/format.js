@@ -1,7 +1,8 @@
 // Форматирование дат, чисел и подписей для интерфейса
 
 export const TYPE_LABELS = { conference: 'Конференция', webinar: 'Вебинар', meeting: 'Встреча' };
-export const STATUS_LABELS = { registered: 'Зарегистрирован', attended: 'Посетил', cancelled: 'Отменена' };
+export const STATUS_LABELS = { registered: 'Зарегистрирован', cancelled: 'Отменена' };
+export const ATTENDED_LABEL = 'Посетил';
 
 // Форматтеры кэшируются по набору опций и часовому поясу. Без пояса – локальное время браузера;
 // с поясом мероприятия (IANA, например Europe/Minsk) – время по месту проведения
@@ -102,12 +103,47 @@ export function toZonedInput(d, tz) {
   return local.toISOString().slice(0, 16);
 }
 
+// Перевод «настенного» времени пояса в момент с учетом перевода часов.
+// Политика (описана в README):
+// - обычное время – единственный момент;
+// - несуществующее (весной часы переводятся вперед, например 02:30 в Europe/Berlin в последнее
+//   воскресенье марта) – status: 'nonexistent', iso: null: форма не сохраняется, пока время не исправят;
+// - неоднозначное (осенью час повторяется, например 02:30 в Europe/Berlin в последнее воскресенье октября) –
+//   status: 'ambiguous': выбирается первое наступление (по летнему времени), форма показывает подсказку,
+//   второй вариант – в alternative.
+export function resolveZonedInput(value, tz) {
+  if (!value) return { status: 'empty', iso: null };
+  const wall = Date.parse(`${value}:00Z`);
+  if (Number.isNaN(wall)) return { status: 'invalid', iso: null };
+  // смещения пояса за сутки до и через сутки после: у перехода часов они различаются
+  const offsets = [...new Set([tzOffsetMs(new Date(wall - 864e5), tz), tzOffsetMs(new Date(wall + 864e5), tz), tzOffsetMs(new Date(wall), tz)])];
+  const candidates = [...new Set(offsets.map((o) => wall - o))]
+    .filter((ms) => toZonedInput(new Date(ms), tz) === value)
+    .sort((a, b) => a - b);
+  if (!candidates.length) return { status: 'nonexistent', iso: null };
+  const iso = new Date(candidates[0]).toISOString();
+  if (candidates.length > 1) return { status: 'ambiguous', iso, alternative: new Date(candidates[1]).toISOString() };
+  return { status: 'ok', iso };
+}
+
+// Момент для API; несуществующее время – null (форма проверяет его заранее через resolveZonedInput)
 export function fromZonedInput(value, tz) {
-  if (!value) return null;
-  const guess = Date.parse(`${value}:00Z`);
-  let ms = guess - tzOffsetMs(new Date(guess), tz);
-  ms = guess - tzOffsetMs(new Date(ms), tz);   // уточнение у перехода на летнее время
-  return new Date(ms).toISOString();
+  return resolveZonedInput(value, tz).iso;
+}
+
+// Сообщение формы о времени у перехода часов: { error } – сохранить нельзя, { hint } – подсказка
+export function zonedInputIssue(value, tz) {
+  const r = resolveZonedInput(value, tz);
+  if (r.status === 'nonexistent') return { error: `Такого времени нет в поясе ${tz}: в этот день часы переводятся вперед. Выберите другое время` };
+  if (r.status === 'ambiguous') {
+    return { hint: `Время повторяется из-за перевода часов назад: выбрано первое (${formatOffsetName(r.iso, tz)}), второе – ${formatOffsetName(r.alternative, tz)}` };
+  }
+  return {};
+}
+
+function formatOffsetName(iso, tz) {
+  const part = fmt({ timeZoneName: 'shortOffset' }, tz).formatToParts(new Date(iso)).find((p) => p.type === 'timeZoneName');
+  return part ? part.value : tz;
 }
 
 // Значение для <input type="datetime-local"> в локальном времени

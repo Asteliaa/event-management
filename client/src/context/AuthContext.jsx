@@ -64,7 +64,8 @@ export function AuthProvider({ children }) {
     isOrganizer: state.user?.role === 'organizer',
     // создавать мероприятия и управлять своими могут организаторы и администраторы
     canOrganize: ['organizer', 'admin'].includes(state.user?.role),
-    login: (credentials) => authApi.login(credentials).then(applyAuth),
+    // reactivated – вход вернул аккаунт, деактивированный самим пользователем (страница входа сообщает об этом)
+    login: (credentials) => authApi.login(credentials).then((res) => ({ user: applyAuth(res), reactivated: Boolean(res.reactivated) })),
     register: (data) => authApi.register(data).then(applyAuth),
     updateUser: (user) => dispatch({ type: 'USER_UPDATED', user }),
     // новый токен после смены пароля: сокет переподключается с ним

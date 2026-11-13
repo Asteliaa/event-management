@@ -90,12 +90,21 @@ describe('PATCH и DELETE /registrations/:id', () => {
         expect((await patch(reg, await createUser(), { comment: 'x' })).status).toBe(403);
     });
 
-    it('отметку о посещении ставят организатор мероприятия и администратор, но не участник и не чужой организатор', async () => {
-        const { organizer, user, reg } = await setup();
-        expect((await patch(reg, user, { status: 'attended' })).status).toBe(403);
-        expect((await patch(reg, await createOrganizer(), { status: 'attended' })).status).toBe(403);
-        expect((await patch(reg, organizer, { status: 'attended' })).body.status).toBe('attended');
-        expect((await patch(reg, await createAdmin(), { status: 'registered' })).body.status).toBe('registered');
+    it('отметку о посещении ставят организатор мероприятия и администратор с момента начала; места не меняются', async () => {
+        const { organizer, user, event, reg } = await setup();
+        // до начала – нельзя
+        expect((await patch(reg, organizer, { attended: true })).body.error.code).toBe('EVENT_NOT_STARTED');
+        await Event.update({ startsAt: new Date(Date.now() - 3600e3), endsAt: new Date(Date.now() + 3600e3) }, { where: { id: event.id } });
+        expect((await patch(reg, user, { attended: true })).status).toBe(403);
+        expect((await patch(reg, await createOrganizer(), { attended: true })).status).toBe(403);
+        const marked = await patch(reg, organizer, { attended: true });
+        expect(marked.body).toMatchObject({ status: 'registered', attended: true });
+        expect(marked.body.attendanceMarkedAt).toBeDefined();
+        // исправление отметки администратором
+        expect((await patch(reg, await createAdmin(), { attended: false })).body).toMatchObject({ status: 'registered', attended: false });
+        expect(await seats(event)).toBe(1);
+        // прежний способ (status: attended) больше не принимается
+        expect((await patch(reg, organizer, { status: 'attended' })).status).toBe(422);
     });
 
     it('отмена освобождает место и отменяет ожидающие напоминания; повторная запись создает новую регистрацию', async () => {
@@ -120,8 +129,12 @@ describe('PATCH и DELETE /registrations/:id', () => {
 
     it('организатор может отменить регистрацию участника своего мероприятия', async () => {
         const { organizer, event, reg } = await setup();
-        const res = await request(app).delete(`/api/v1/registrations/${reg.id}`).set('Authorization', organizer.auth);
-        expect(res.body).toMatchObject({ status: 'cancelled', cancelledBy: 'organizer' });
+        const noReason = await request(app).delete(`/api/v1/registrations/${reg.id}`).set('Authorization', organizer.auth);
+        expect(noReason.status).toBe(422);
+        expect(noReason.body.error.details.map((d) => d.field)).toEqual(['body.reason']);
+        const res = await request(app).delete(`/api/v1/registrations/${reg.id}`).set('Authorization', organizer.auth)
+            .send({ reason: 'Мероприятие только для сотрудников' });
+        expect(res.body).toMatchObject({ status: 'cancelled', cancelledBy: 'organizer', cancelReason: 'Мероприятие только для сотрудников' });
         expect(await seats(event)).toBe(0);
     });
 

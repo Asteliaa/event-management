@@ -87,9 +87,11 @@ const registrations = async (req, res) => {
         { title: 'Имя', value: (r) => r.user?.name },
         { title: 'Email', value: (r) => r.user?.email },
         { title: 'Статус', value: (r) => r.status },
+        { title: 'Посещение', value: (r) => (r.attended ? 'да' : '') },
         { title: 'Комментарий', value: (r) => r.comment },
         { title: 'Дата регистрации', value: (r) => r.createdAt.toISOString() },
-        { title: 'Дата отмены', value: (r) => r.cancelledAt?.toISOString() }
+        { title: 'Дата отмены', value: (r) => r.cancelledAt?.toISOString() },
+        { title: 'Причина отмены', value: (r) => r.cancelReason }
     ], list);
     res.type('text/csv; charset=utf-8').attachment(`participants-${req.params.id}.csv`).send(csv);
 };

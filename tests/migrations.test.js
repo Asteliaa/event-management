@@ -87,3 +87,27 @@ describe('Миграции этапа Б на данных этапа А', () =>
         await migrator.up();
     });
 });
+
+describe('Миграция посещения (завершение функциональных сценариев)', () => {
+    const ATT = '20261113000001-attendance-and-cancel-reason.js';
+    it('статус attended переносится в отметку посещения, откат возвращает его', async () => {
+        await migrator.down({ to: ATT });
+        await q(`INSERT INTO users (name, email, password_hash) VALUES ('Анна', 'anna@demo.eventhub.local', 'x')`);
+        await q(`INSERT INTO events (title, type, status, timezone, starts_at, ends_at) VALUES
+            ('Прошедшее', 'meeting', 'published', 'Europe/Minsk', now() - interval '2 days', now() - interval '1 day')`);
+        const [[{ id: userId }]] = await q('SELECT id FROM users');
+        const [[{ id: eventId }]] = await q('SELECT id FROM events');
+        await q(`INSERT INTO registrations (event_id, user_id, status) VALUES (${eventId}, ${userId}, 'attended')`);
+
+        await migrator.up();
+        const [after] = await select('SELECT status, attended, attendance_marked_at IS NOT NULL AS marked FROM registrations');
+        expect(after).toEqual({ status: 'registered', attended: true, marked: true });
+        await expect(q(`UPDATE registrations SET status = 'attended'`)).rejects.toThrow();
+
+        await migrator.down({ to: ATT });
+        const [back] = await select('SELECT status FROM registrations');
+        expect(back.status).toBe('attended');
+        await q('TRUNCATE registrations, events, users RESTART IDENTITY CASCADE');
+        await migrator.up();
+    });
+});

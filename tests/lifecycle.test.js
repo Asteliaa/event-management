@@ -242,10 +242,11 @@ describe('Отмена мероприятия и регистрации', () => 
         const [a, b] = [await createUser(), await createUser()];
         const { registration: ra } = await registerUser(event, a);
         const { registration: rb } = await registerUser(event, b);
-        await as(org).del(`/api/v1/registrations/${ra.id}`);
+        await request(app).delete(`/api/v1/registrations/${ra.id}`).set('Authorization', org.auth).send({ reason: 'Перенос в другой зал' });
         await as(b).del(`/api/v1/registrations/${rb.id}`);
         const notes = await Notification.findAll();
-        expect(notes.map((n) => [String(n.userId), n.type, n.payload.by])).toEqual([[a.id, 'registration_cancelled', 'organizer']]);
+        expect(notes.map((n) => [String(n.userId), n.type, n.payload.by, n.payload.reason]))
+            .toEqual([[a.id, 'registration_cancelled', 'organizer', 'Перенос в другой зал']]);
     });
 
     it('планировщик пропускает напоминание, пока регистрация заблокирована отменой, и не отправляет его после отмены', async () => {

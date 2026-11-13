@@ -176,7 +176,8 @@ function ManagePanel({ event, onChange }) {
       )}
       {event.status === 'published' && (
         <>
-          {event.seatsTaken === 0 && (
+          {/* снять с публикации можно до начала и если регистраций не было (точнее проверяет сервер) */}
+          {event.seatsTaken === 0 && event.phase === 'upcoming' && (
             <button type="button" className="btn btn--soft btn--block" disabled={busy} onClick={() => run('unpublish', 'Мероприятие снято с публикации')}>Снять с публикации</button>
           )}
           {event.phase !== 'finished' && (
@@ -191,12 +192,13 @@ function ManagePanel({ event, onChange }) {
           footer={(
             <>
               <button type="button" className="btn btn--ghost" onClick={() => setDialog(null)}>Не отменять</button>
-              <button type="button" className="btn btn--danger" disabled={busy} onClick={() => run('cancel', 'Мероприятие отменено')}>Отменить мероприятие</button>
+              <button type="button" className="btn btn--danger" disabled={busy || (event.phase === 'live' && reason.trim().length < 3)} onClick={() => run('cancel', 'Мероприятие отменено')}>Отменить мероприятие</button>
             </>
           )}
         >
           <p>Участники получат уведомление, напоминания будут отменены. История регистраций и чат сохранятся. Отмену нельзя вернуть.</p>
-          <Field label="Причина (увидят участники)"><textarea rows={3} maxLength={500} value={reason} onChange={(e) => setReason(e.target.value)} /></Field>
+          {event.phase === 'live' && <p className="notice">Мероприятие уже идет: укажите причину. Отметки о посещении сохранятся.</p>}
+          <Field label={event.phase === 'live' ? 'Причина (обязательно, увидят участники)' : 'Причина (увидят участники)'}><textarea rows={3} maxLength={500} value={reason} onChange={(e) => setReason(e.target.value)} /></Field>
         </Modal>
       )}
       {dialog === 'remove' && (

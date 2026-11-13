@@ -31,12 +31,35 @@ const assertPassword = async (user, password) => {
 };
 
 // --- блокировка и роль (администратор) ---
+// Опубликованные незавершенные мероприятия пользователя, в том числе идущие
+const activeEventsCount = async (id, transaction) => {
+    const [{ count }] = await sequelize.query(
+        `SELECT count(*)::int AS count FROM events
+         WHERE organizer_id = :id AND status = 'published' AND coalesce(ends_at, starts_at) > now()`,
+        { replacements: { id }, type: QueryTypes.SELECT, transaction }
+    );
+    return count;
+};
+
 const updateByAdmin = async (id, { role, blocked }, currentUser) => {
     assertNotSelf(id, currentUser, 'Нельзя изменить роль или заблокировать самого себя');
     const user = await sequelize.transaction(async (transaction) => {
         const u = await lockUser(id, transaction);
         const changes = {};
-        if (role !== undefined && role !== u.role) changes.role = role;
+        if (role !== undefined && role !== u.role) {
+            // без роли организатора пользователь не может вести мероприятия: опубликованные незавершенные
+            // (в том числе идущие) сначала передаются другому организатору или отменяются
+            if (role === 'user') {
+                const count = await activeEventsCount(u.id, transaction);
+                if (count > 0) {
+                    throw ApiError.conflict(
+                        `У пользователя есть опубликованные незавершенные мероприятия (${count}): передайте их другому организатору или отмените`,
+                        'ORGANIZER_HAS_ACTIVE_EVENTS'
+                    );
+                }
+            }
+            changes.role = role;
+        }
         if (blocked !== undefined && blocked !== u.blocked) Object.assign(changes, { blocked, blockedAt: blocked ? new Date() : null });
         if (Object.keys(changes).length) {
             // смена роли или блокировка: старые токены и соединения с прежними правами завершаются
@@ -101,11 +124,7 @@ const reactivateByAdmin = async (id) => {
 // Организатора с будущими опубликованными мероприятиями удалить нельзя, пока они не переданы или не отменены.
 const anonymize = async (user, transaction) => {
     const id = user.id;
-    const [{ count }] = await sequelize.query(
-        `SELECT count(*)::int AS count FROM events
-         WHERE organizer_id = :id AND status = 'published' AND coalesce(ends_at, starts_at) > now()`,
-        { replacements: { id }, type: QueryTypes.SELECT, transaction }
-    );
+    const count = await activeEventsCount(id, transaction);
     if (count > 0) {
         throw ApiError.conflict(
             `У пользователя есть будущие опубликованные мероприятия (${count}): передайте их другому организатору или отмените`,

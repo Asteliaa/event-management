@@ -53,8 +53,11 @@ function AuthForm({ mode }) {
     if (Object.keys(clientErrors).length) return;
     setBusy(true);
     try {
-      const user = isRegister ? await register(form) : await login({ email: form.email, password: form.password });
-      notify(isRegister ? `Добро пожаловать, ${user.name}!` : `С возвращением, ${user.name}!`, 'success');
+      const { user, reactivated } = isRegister
+        ? { user: await register(form) }
+        : await login({ email: form.email, password: form.password });
+      if (reactivated) notify(`Аккаунт восстановлен. С возвращением, ${user.name}! Регистрации и напоминания снова активны.`, 'success');
+      else notify(isRegister ? `Добро пожаловать, ${user.name}!` : `С возвращением, ${user.name}!`, 'success');
       // возврат на страницу, с которой пользователь пришел на вход (useNavigate)
       navigate(location.state?.from?.pathname || (user.role === 'admin' ? '/admin' : '/profile'), { replace: true });
     } catch (err) {

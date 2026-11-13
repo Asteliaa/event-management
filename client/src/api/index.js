@@ -43,7 +43,8 @@ export const eventsApi = {
 
 export const registrationsApi = {
   update: (id, body) => api.patch(`/registrations/${id}`, body).then(data),
-  cancel: (id) => api.delete(`/registrations/${id}`).then(data),
+  // reason – обязательна, если отменяет организатор или администратор
+  cancel: (id, reason) => api.delete(`/registrations/${id}`, reason ? { data: { reason } } : undefined).then(data),
 };
 
 export const remindersApi = {

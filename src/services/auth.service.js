@@ -40,8 +40,10 @@ const login = async ({ email, password }) => {
         if (user.deactivatedBy === 'admin') {
             throw new ApiError(403, 'Учетная запись деактивирована администратором', { code: 'ACCOUNT_DEACTIVATED' });
         }
-        // деактивацию, выполненную самим пользователем, отменяет вход с паролем
+        // деактивацию, выполненную самим пользователем, отменяет вход с паролем;
+        // reactivated: true – клиент сообщает, что учетная запись восстановлена
         await user.update({ status: 'active', deactivatedAt: null, deactivatedBy: null });
+        return { user: user.toJSON(), token: signToken(user), reactivated: true };
     }
     return { user: user.toJSON(), token: signToken(user) };
 };

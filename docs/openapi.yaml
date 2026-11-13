@@ -1,7 +1,7 @@
 openapi: 3.0.3
 info:
   title: EventHub API
-  version: 2.0.0
+  version: 2.1.0
   description: |
     REST API веб-приложения для организации конференций, вебинаров и встреч
     с регистрацией участников и напоминаниями (курсовая работа, тема №11).
@@ -200,9 +200,12 @@ components:
         id: { type: string }
         event: { oneOf: [{ type: string }, { $ref: '#/components/schemas/Event' }] }
         user: { oneOf: [{ type: string }, { $ref: '#/components/schemas/User' }] }
-        status: { type: string, enum: [registered, attended, cancelled] }
+        status: { type: string, enum: [registered, cancelled], description: посещение хранится отдельно (attended) }
+        attended: { type: boolean, description: отметка посещения (с момента начала; не меняет счетчик мест) }
+        attendanceMarkedAt: { type: string, format: date-time }
         cancelledAt: { type: string, format: date-time }
         cancelledBy: { type: string, enum: [user, organizer, admin, system] }
+        cancelReason: { type: string, description: причина отмены организатором или администратором }
         comment: { type: string }
         legacyTickets: { type: integer, description: число билетов до перехода на «одна регистрация – одно место» }
         createdAt: { type: string, format: date-time }
@@ -306,7 +309,14 @@ paths:
                 email: { type: string, example: admin@demo.eventhub.local }
                 password: { type: string, example: admin12345 }
       responses:
-        '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/AuthResult' } } } }
+        '200':
+          description: 'OK; reactivated = true – вход восстановил аккаунт, деактивированный самим пользователем'
+          content:
+            application/json:
+              schema:
+                allOf:
+                  - { $ref: '#/components/schemas/AuthResult' }
+                  - { type: object, properties: { reactivated: { type: boolean } } }
         '401': { description: Неверный email или пароль (в том числе удаленный аккаунт) }
         '403': { description: Аккаунт заблокирован или деактивирован администратором (ACCOUNT_DEACTIVATED) }
         '429': { $ref: '#/components/responses/Error' }
@@ -466,7 +476,13 @@ paths:
         '404': { $ref: '#/components/responses/Error' }
     patch:
       tags: [Organizer]
-      summary: Изменить мероприятие; смена дат – перенос (schedule_version + 1, напоминания пересчитываются, участники уведомляются)
+      summary: Изменить мероприятие; смена дат – изменение расписания (schedule_version + 1, напоминания пересчитываются, участники уведомляются)
+      description: |
+        После начала опубликованного мероприятия часть полей зафиксирована (поля с прежним значением изменением не считаются):
+        - идет – нельзя менять начало, часовой пояс, формат (online), вместимость, регистрацию (409 EVENT_STARTED);
+          окончание можно только продлить (иначе 422), место и ссылку можно исправить (уведомление event_location_changed);
+        - завершено – можно изменить только описание (и владельца – администратор), иначе 409 EVENT_FINISHED.
+        Поле organizer (передача мероприятия) меняет только администратор; новый владелец – организатор или администратор.
       security: [{ bearerAuth: [] }]
       requestBody:
         content: { application/json: { schema: { $ref: '#/components/schemas/EventInput' } } }
@@ -474,7 +490,8 @@ paths:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Event' } } } }
         '403': { $ref: '#/components/responses/Error' }
         '404': { $ref: '#/components/responses/Error' }
-        '409': { description: Мероприятие отменено (EVENT_CANCELLED) или завершено (EVENT_FINISHED), вместимость меньше числа участников (CAPACITY_TOO_SMALL) }
+        '409': { description: 'Мероприятие отменено (EVENT_CANCELLED), идет (EVENT_STARTED) или завершено (EVENT_FINISHED) – details содержит запрещенные поля; вместимость меньше числа участников (CAPACITY_TOO_SMALL)' }
+        '422': { description: Ошибка валидации (в том числе сокращение окончания идущего мероприятия) }
     delete:
       tags: [Organizer]
       summary: Удалить черновик (опубликованные отменяются, а не удаляются)
@@ -487,26 +504,26 @@ paths:
     parameters: [{ $ref: '#/components/parameters/id' }]
     post:
       tags: [Organizer]
-      summary: Опубликовать черновик
+      summary: Опубликовать черновик (в том числе повторно – полная проверка)
       security: [{ bearerAuth: [] }]
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Event' } } } }
         '409': { $ref: '#/components/responses/Error' }
-        '422': { description: Не заполнены поля, обязательные для публикации }
+        '422': { description: 'Не заполнены поля публикации, начало не в будущем, срок регистрации истек или позже начала' }
   /events/{id}/unpublish:
     parameters: [{ $ref: '#/components/parameters/id' }]
     post:
       tags: [Organizer]
-      summary: Вернуть в черновик (только без регистраций)
+      summary: Вернуть в черновик – исправление ошибочной публикации (до начала и только если регистраций не было никогда)
       security: [{ bearerAuth: [] }]
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Event' } } } }
-        '409': { description: Есть регистрации (EVENT_HAS_REGISTRATIONS) или мероприятие не опубликовано (EVENT_NOT_PUBLISHED) }
+        '409': { description: 'Регистрации были, в том числе отмененные (EVENT_HAS_REGISTRATIONS), мероприятие началось (EVENT_STARTED) или не опубликовано (EVENT_NOT_PUBLISHED)' }
   /events/{id}/cancel:
     parameters: [{ $ref: '#/components/parameters/id' }]
     post:
       tags: [Organizer]
-      summary: Отменить мероприятие с причиной; напоминания отменяются, участники уведомляются, чат – только чтение
+      summary: Отменить мероприятие (идущее – только с причиной); регистрации и посещение сохраняются, напоминания отменяются, участники уведомляются, чат – только чтение
       security: [{ bearerAuth: [] }]
       requestBody:
         content:
@@ -514,7 +531,8 @@ paths:
             schema: { type: object, properties: { reason: { type: string, maxLength: 500 } } }
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Event' } } } }
-        '409': { $ref: '#/components/responses/Error' }
+        '409': { description: 'Уже отменено (EVENT_CANCELLED), черновик (EVENT_NOT_PUBLISHED), завершено (EVENT_FINISHED)' }
+        '422': { description: Идущее мероприятие без причины }
   /events/{id}/stats:
     parameters: [{ $ref: '#/components/parameters/id' }]
     get:
@@ -562,7 +580,7 @@ paths:
       security: [{ bearerAuth: [] }]
       parameters:
         - { name: format, in: query, schema: { type: string, enum: [json, csv], default: json } }
-        - { name: status, in: query, schema: { type: string, enum: [all, active, registered, attended, cancelled], default: all } }
+        - { name: status, in: query, schema: { type: string, enum: [all, active, attended, registered, cancelled], default: all }, description: attended – активные с отметкой посещения }
       responses:
         '200': { description: OK, content: { application/json: { schema: { type: array, items: { $ref: '#/components/schemas/Registration' } } }, text/csv: {} } }
         '403': { $ref: '#/components/responses/Error' }
@@ -571,27 +589,36 @@ paths:
     patch:
       tags: [Registrations]
       summary: Комментарий (участник) или отметка посещения (владелец мероприятия, администратор)
+      description: Посещение отмечается и исправляется с момента начала, только у активной регистрации и не у отмененного мероприятия; счетчик мест не меняется. Поле status не принимается (отмена – DELETE).
       security: [{ bearerAuth: [] }]
       requestBody:
         content:
           application/json:
             schema:
               type: object
+              additionalProperties: false
               properties:
-                status: { type: string, enum: [registered, attended, cancelled] }
-                comment: { type: string }
+                attended: { type: boolean }
+                comment: { type: string, maxLength: 300 }
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Registration' } } } }
         '403': { $ref: '#/components/responses/Error' }
-        '409': { description: Регистрация уже отменена (REGISTRATION_CANCELLED) }
+        '409': { description: 'Регистрация отменена (REGISTRATION_CANCELLED), мероприятие отменено (EVENT_CANCELLED) или еще не началось (EVENT_NOT_STARTED)' }
     delete:
       tags: [Registrations]
-      summary: Отменить регистрацию (место освобождается, напоминания отменяются, доступ к чату закрывается; при отмене организатором участник получает уведомление)
+      summary: Отменить участие до начала (место освобождается, напоминания отменяются, доступ к чату закрывается)
+      description: Участник отменяет свою регистрацию без причины. Организатор мероприятия и администратор указывают причину – участник получает уведомление registration_cancelled с причиной. Повторная отмена ничего не меняет (200).
       security: [{ bearerAuth: [] }]
+      requestBody:
+        content:
+          application/json:
+            schema: { type: object, properties: { reason: { type: string, minLength: 3, maxLength: 500 } } }
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/Registration' } } } }
         '403': { $ref: '#/components/responses/Error' }
         '404': { $ref: '#/components/responses/Error' }
+        '409': { description: 'Мероприятие началось (EVENT_STARTED) или отменено (EVENT_CANCELLED)' }
+        '422': { description: Организатор или администратор не указал причину }
   /reminders:
     get:
       tags: [Reminders]
@@ -745,6 +772,7 @@ paths:
       responses:
         '200': { description: OK, content: { application/json: { schema: { $ref: '#/components/schemas/User' } } } }
         '400': { $ref: '#/components/responses/Error' }
+        '409': { description: 'Роль user нельзя назначить, пока есть опубликованные незавершенные мероприятия, включая идущие (ORGANIZER_HAS_ACTIVE_EVENTS): сначала передача или отмена' }
     delete:
       tags: [Admin]
       summary: Удалить пользователя (необратимое обезличивание, история сохраняется)

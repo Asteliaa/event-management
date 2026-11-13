@@ -25,8 +25,10 @@ const withEvent = async (id, transaction) => {
     return registration;
 };
 
+// После завершения мероприятия ссылка участникам больше не показывается
 function revealIfActive(registration) {
-    if (registration?.event && registration.status !== 'cancelled' && registration.event.status === 'published') {
+    const event = registration?.event;
+    if (event && registration.status !== 'cancelled' && event.status === 'published' && event.phase !== 'finished') {
         registration.event.revealLink();
     }
     return registration;
@@ -100,15 +102,20 @@ const findOrFail = async (id, transaction) => {
     if (!registration) throw ApiError.notFound('Регистрация не найдена');
     // строка регистрации заблокирована FOR UPDATE: планировщик напоминаний (FOR SHARE ... SKIP LOCKED)
     // пропускает ее напоминания, пока отмена не зафиксирована
-    const event = await Event.findByPk(registration.eventId, { transaction, attributes: ['id', 'organizerId', 'status'] });
+    const event = await Event.findByPk(registration.eventId, {
+        transaction, attributes: ['id', 'organizerId', 'status', 'startsAt', 'endsAt']
+    });
     return { registration, event };
 };
 
-// Кто действует с регистрацией: ее владелец, организатор мероприятия или администратор
+const isOwner = (user, registration) => String(registration.userId) === String(user.id);
+
+// Кто действует с регистрацией: ее владелец, организатор мероприятия или администратор.
+// Свою регистрацию пользователь отменяет как участник, даже если он администратор
 const actorFor = (user, registration, event) => {
+    if (isOwner(user, registration)) return 'user';
     if (isAdmin(user)) return 'admin';
     if (canManageEvent(user, event)) return 'organizer';
-    if (String(registration.userId) === String(user.id)) return 'user';
     return null;
 };
 
@@ -118,14 +125,18 @@ const assertActor = (user, registration, event) => {
     return actor;
 };
 
+const hasStarted = (event) => event.startsAt && event.startsAt.getTime() <= Date.now();
+
 // Отмена: запись остается со статусом cancelled (история), место освобождается,
-// ожидающие напоминания этой регистрации отменяются – в одной транзакции
-// Если регистрацию отменил организатор или администратор, участник получает уведомление.
+// ожидающие напоминания этой регистрации отменяются – в одной транзакции.
+// Если регистрацию отменил организатор или администратор, участник получает уведомление с причиной.
 // Возвращает id созданных уведомлений (отправляются после фиксации транзакции)
-const cancelInTransaction = async (registration, actor, transaction) => {
+const cancelInTransaction = async (registration, actor, transaction, reason = null) => {
     if (registration.status === 'cancelled') return [];
     await releaseSeat(registration.eventId, transaction);
-    await registration.update({ status: 'cancelled', cancelledAt: new Date(), cancelledBy: actor }, { transaction });
+    await registration.update({
+        status: 'cancelled', cancelledAt: new Date(), cancelledBy: actor, cancelReason: reason
+    }, { transaction });
     await reminderService.cancelForRegistration(registration.id, 'registration_cancelled', transaction);
     if (actor === 'user') return [];
     return notificationService.createForUser({
@@ -133,16 +144,29 @@ const cancelInTransaction = async (registration, actor, transaction) => {
         type: 'registration_cancelled',
         eventId: registration.eventId,
         registrationId: registration.id,
-        payload: { by: actor },
+        payload: { by: actor, reason },
         dedupKey: `registration:${registration.id}:cancelled`
     }, transaction);
 };
 
-const cancel = async (id, user) => {
+// Отмена участия – только до начала мероприятия: после начала неявку отмечают посещением, а не отменой.
+// Участник отменяет свою регистрацию без причины; организатор мероприятия и администратор – с причиной
+const cancel = async (id, user, { reason } = {}) => {
     const ids = await sequelize.transaction(async (transaction) => {
         const { registration, event } = await findOrFail(id, transaction);
-        const who = assertActor(user, registration, event);
-        return cancelInTransaction(registration, who, transaction);
+        const actor = assertActor(user, registration, event);
+        // повторная отмена (например, двойной клик) ничего не меняет
+        if (registration.status === 'cancelled') return [];
+        if (event.status === 'cancelled') throw ApiError.conflict('Мероприятие отменено', 'EVENT_CANCELLED');
+        if (hasStarted(event)) {
+            throw ApiError.conflict('Мероприятие уже началось: участие отменить нельзя, отметьте посещение', 'EVENT_STARTED');
+        }
+        if (actor !== 'user' && !reason) {
+            throw new ApiError(422, 'Ошибка валидации данных', {
+                details: [{ field: 'body.reason', message: 'Укажите причину отмены участия' }]
+            });
+        }
+        return cancelInTransaction(registration, actor, transaction, actor === 'user' ? null : reason);
     });
     await notificationService.deliver(ids);
     const registration = await withEvent(id);
@@ -151,29 +175,33 @@ const cancel = async (id, user) => {
     return registration;
 };
 
-// Изменение: участник меняет комментарий; отметку о посещении (attended) ставят
-// организатор мероприятия и администратор; status = cancelled – то же, что отмена
-const update = async (id, user, { status, comment }) => {
-    const ids = await sequelize.transaction(async (transaction) => {
+// Изменение: участник меняет свой комментарий; отметку о посещении ставят и исправляют организатор
+// мероприятия и администратор – с момента начала, только у активной регистрации и не у отмененного
+// мероприятия. Отметка не меняет число занятых мест
+const update = async (id, user, { attended, comment }) => {
+    await sequelize.transaction(async (transaction) => {
         const { registration, event } = await findOrFail(id, transaction);
-        const actor = assertActor(user, registration, event);
+        assertActor(user, registration, event);
         if (registration.status === 'cancelled') throw ApiError.conflict('Регистрация отменена', 'REGISTRATION_CANCELLED');
-        if (status === 'cancelled') return cancelInTransaction(registration, actor, transaction);
-        if (status && actor === 'user') {
-            throw ApiError.forbidden('Отметку о посещении ставит организатор мероприятия или администратор');
+        if (attended !== undefined) {
+            if (!canManageEvent(user, event)) {
+                throw ApiError.forbidden('Отметку о посещении ставит организатор мероприятия или администратор');
+            }
+            if (event.status === 'cancelled') throw ApiError.conflict('Мероприятие отменено', 'EVENT_CANCELLED');
+            if (!hasStarted(event)) {
+                throw ApiError.conflict('Посещение отмечается с момента начала мероприятия', 'EVENT_NOT_STARTED');
+            }
+            if (registration.attended !== attended) {
+                registration.set({ attended, attendanceMarkedAt: new Date(), attendanceMarkedBy: user.id });
+            }
         }
-        if (comment !== undefined && String(registration.userId) !== String(user.id)) {
-            throw ApiError.forbidden('Комментарий может изменить только сам участник');
+        if (comment !== undefined) {
+            if (!isOwner(user, registration)) throw ApiError.forbidden('Комментарий может изменить только сам участник');
+            registration.comment = comment;
         }
-        if (status) registration.status = status;
-        if (comment !== undefined) registration.comment = comment;
         await registration.save({ transaction });
-        return [];
     });
-    await notificationService.deliver(ids);
-    const registration = await withEvent(id);
-    if (status === 'cancelled') notify.revokeChat(registration.userId, registration.eventId, 'registration_cancelled');
-    return registration;
+    return withEvent(id);
 };
 
 // Мои регистрации. По умолчанию – только активные; status=cancelled – история отмен, status=all – все
@@ -200,6 +228,7 @@ const listForEvent = async (eventId, user, { status = 'all' } = {}) => {
     if (!canManageEvent(user, event)) throw ApiError.forbidden('Список участников доступен организатору мероприятия и администратору');
     const where = { eventId };
     if (status === 'active') where.status = { [Op.ne]: 'cancelled' };
+    else if (status === 'attended') Object.assign(where, { status: 'registered', attended: true });
     else if (status !== 'all') where.status = status;
     return Registration.findAll({
         where,

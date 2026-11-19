@@ -13,7 +13,25 @@ const app = require('../app');
 const store = require('../data/events');
 const { LOG_DIR, LOG_FILE } = require('../utils/journal');
 
+const { execFileSync } = require('child_process');
+
 const isRoot = typeof process.getuid === 'function' && process.getuid() === 0;
+const isWindows = process.platform === 'win32';
+
+/**
+ * Запрещает чтение файла. В Windows chmod не ограничивает чтение,
+ * поэтому используется icacls: запрет на чтение данных (RD) для текущего пользователя,
+ * дозапись в журнал при этом остается разрешенной.
+ */
+function denyRead(file) {
+  if (isWindows) execFileSync('icacls', [file, '/deny', `${process.env.USERNAME}:(RD)`], { stdio: 'ignore' });
+  else fs.chmodSync(file, 0o200);
+}
+
+function allowRead(file) {
+  if (isWindows) execFileSync('icacls', [file, '/remove:d', process.env.USERNAME], { stdio: 'ignore' });
+  else fs.chmodSync(file, 0o644);
+}
 
 /** Возвращает папку журнала в исходное состояние. */
 function cleanLogDir() {
@@ -83,6 +101,13 @@ describe('Журнал нельзя восстановить – страниц�
     assert.doesNotMatch(res.text, /EISDIR|illegal operation/i);
   });
 
+  test('на странице 500 организатор остается организатором (авторизация раньше журнала)', async () => {
+    fs.mkdirSync(LOG_FILE, { recursive: true });
+    const res = await request(app).get('/?auth=1').expect(500);
+    assert.match(res.text, /Организатор/);
+    assert.doesNotMatch(res.text, /Войти/);
+  });
+
   test('сайт снова работает, как только папку убрали (без перезапуска)', async () => {
     fs.mkdirSync(LOG_FILE, { recursive: true });
     await request(app).get('/').expect(500);
@@ -100,9 +125,9 @@ describe('Журнал нельзя восстановить – страниц�
 
   test('ошибка журнала при POST – форма не обрабатывается, запись не добавляется', async () => {
     fs.mkdirSync(LOG_FILE, { recursive: true });
-    const before = store.count();
+    const before = await store.count();
     await request(app).post('/add?auth=1').type('form').send('title=x').expect(500);
-    assert.equal(store.count(), before);
+    assert.equal(await store.count(), before);
   });
 
   test('стили страницы 500 отдаются, хотя журнал сломан', async () => {
@@ -153,12 +178,16 @@ describe('Страница журнала GET /logs', () => {
   test('нет прав на чтение файла журнала', { skip: isRoot && 'запущено от root: права не ограничивают' }, async () => {
     fs.mkdirSync(LOG_DIR, { recursive: true });
     fs.writeFileSync(LOG_FILE, '');
-    fs.chmodSync(LOG_FILE, 0o200);
+    denyRead(LOG_FILE);
     try {
+      // Убеждаемся, что запрет действительно работает в этой системе
+      assert.throws(() => fs.readFileSync(LOG_FILE), /EACCES|EPERM/);
       const res = await request(app).get('/logs?auth=1').expect(500);
       assert.match(res.text, /Нет доступа к журналу запросов: запрещено прочитать/);
+      assert.doesNotMatch(res.text, /EACCES|EPERM|permission denied/i);
     } finally {
-      fs.chmodSync(LOG_FILE, 0o644);
+      allowRead(LOG_FILE);
     }
   });
+
 });

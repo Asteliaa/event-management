@@ -47,7 +47,7 @@
 
     <label class="field <%= errors.date ? 'has-error' : '' %>">
       <span>Дата *</span>
-      <input type="date" name="date" value="<%= val('date') %>" required max="9999-12-31" <%- invalid('date') %>>
+      <input type="date" name="date" value="<%= val('date') %>" required min="<%= today %>" max="9999-12-31" <%- invalid('date') %>>
       <%- include('partials/fieldError', { name: 'date' }) %>
     </label>
 

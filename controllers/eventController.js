@@ -1,6 +1,7 @@
 /**
- * Контроллер мероприятий: получает данные из массива
+ * Контроллер мероприятий: получает данные из PostgreSQL (data/events.js)
  * и передает их в EJS-шаблоны через res.render().
+ * Функции асинхронные: ошибки базы данных передаются в обработчик ошибок через asyncHandler.
  */
 const store = require('../data/events');
 const { validateEvent } = require('../utils/validateEvent');
@@ -11,7 +12,7 @@ const journal = require('../utils/journal');
 const ID_RE = /^[1-9]\d{0,8}$/;
 
 // GET / – список мероприятий с фильтром по типу и поиском
-function list(req, res) {
+async function list(req, res) {
   const notices = [];
 
   // Фильтр по типу: только значение из справочника
@@ -38,24 +39,19 @@ function list(req, res) {
     }
   }
 
-  const needle = q.toLocaleLowerCase('ru-RU');
-  const events = store.getAll()
-    .filter((e) => !type || e.type === type)
-    .filter((e) => !needle || [e.title, e.location, e.organizer]
-      .some((field) => field.toLocaleLowerCase('ru-RU').includes(needle)))
-    .slice()
-    .sort((a, b) => (a.date + a.time).localeCompare(b.date + b.time) || a.id - b.id);
+  // Фильтрация и сортировка выполняются в базе (параметризованный запрос)
+  const events = await store.list({ type, q });
 
   // Сообщение об успешном добавлении после редиректа (?created=ID)
   let created = null;
   if (typeof req.query.created === 'string' && ID_RE.test(req.query.created)) {
-    created = store.findById(Number(req.query.created)) || null;
+    created = await store.findById(Number(req.query.created));
   }
 
   res.render('index', {
     title: 'Мероприятия',
     events,
-    total: store.count(),
+    total: await store.count(),
     filters: { type, q },
     notices,
     created,
@@ -64,16 +60,16 @@ function list(req, res) {
 }
 
 // GET /item/:id – детальная страница
-function detail(req, res) {
+async function detail(req, res) {
   const { id } = req.params;
   // Нечисловой, отрицательный, дробный или слишком длинный id – сразу 404,
-  // в массив с таким значением не обращаемся
-  const event = ID_RE.test(id) ? store.findById(Number(id)) : null;
+  // в базу с таким значением не обращаемся
+  const event = ID_RE.test(id) ? await store.findById(Number(id)) : null;
   if (!event) {
     return res.status(404).render('404', {
       title: 'Мероприятие не найдено',
       url: req.originalUrl,
-      message: 'Мероприятия с таким номером нет. Записи, добавленные до перезапуска сервера, не сохраняются.'
+      message: 'Мероприятия с таким номером нет.'
     });
   }
   res.render('item', { title: event.title, event, today: todayISO() });
@@ -88,7 +84,8 @@ function renderForm(res, status, values, errors, formError) {
     formError: formError || null,
     types: EVENT_TYPES,
     formats: EVENT_FORMATS,
-    limits: LIMITS
+    limits: LIMITS,
+    today: todayISO()
   });
 }
 
@@ -97,19 +94,18 @@ function showForm(req, res) {
   renderForm(res, 200, { type: '', format: '' }, {});
 }
 
-// POST /add – проверка, сохранение в массив и редирект на главную
-function create(req, res) {
+// POST /add – проверка, сохранение в базу и редирект на главную
+async function create(req, res) {
   const { data, errors } = validateEvent(req.body);
 
   if (Object.keys(errors).length) {
     return renderForm(res, 400, data, errors, 'Исправьте ошибки в отмеченных полях.');
   }
 
-  if (store.count() >= store.MAX_EVENTS) {
+  const event = await store.add(data);
+  if (!event) {
     return renderForm(res, 409, data, {}, `Достигнут лимит в ${store.MAX_EVENTS} мероприятий.`);
   }
-
-  const event = store.add(data);
   // 303 See Other: шаблон Post/Redirect/Get, обновление страницы не отправит форму повторно
   res.redirect(303, `/?auth=1&created=${event.id}`);
 }

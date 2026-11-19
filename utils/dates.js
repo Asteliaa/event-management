@@ -7,6 +7,12 @@ function toISODate(d) {
 
 const todayISO = () => toISODate(new Date());
 
+/** Текущее время 'ЧЧ:ММ'. */
+const nowTime = () => {
+  const d = new Date();
+  return `${pad(d.getHours())}:${pad(d.getMinutes())}`;
+};
+
 const MONTHS = ['января', 'февраля', 'марта', 'апреля', 'мая', 'июня', 'июля',
   'августа', 'сентября', 'октября', 'ноября', 'декабря'];
 const WEEKDAYS = ['воскресенье', 'понедельник', 'вторник', 'среда', 'четверг', 'пятница', 'суббота'];
@@ -22,4 +28,4 @@ function formatDate(iso) {
   return `${d.getDate()} ${MONTHS[d.getMonth()]} ${d.getFullYear()}, ${WEEKDAYS[d.getDay()]}`;
 }
 
-module.exports = { todayISO, formatDate, toISODate };
+module.exports = { todayISO, nowTime, formatDate, toISODate };

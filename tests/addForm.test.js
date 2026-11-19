@@ -4,7 +4,8 @@
  */
 const { test, describe, beforeEach } = require('node:test');
 const assert = require('node:assert/strict');
-const { daysFromNow, validForm, encode } = require('./helpers');
+const { daysFromNow, validForm, encode, fillToLimit } = require('./helpers');
+const { nowTime } = require('../utils/dates');
 const request = require('supertest');
 const app = require('../app');
 const store = require('../data/events');
@@ -16,10 +17,10 @@ const post = (body, { type = 'form' } = {}) =>
 
 /** Ожидает 400, ошибку в указанном поле и отсутствие новой записи. */
 async function expectFieldError(body, field, pattern) {
-  const before = store.count();
+  const before = await store.count();
   const res = await post(body).expect(400);
   assert.match(res.text, new RegExp(`id="${field}-error">[^<]*${pattern ? pattern.source : ''}`));
-  assert.equal(store.count(), before, 'запись не должна добавиться');
+  assert.equal(await store.count(), before, 'запись не должна добавиться');
   return res;
 }
 
@@ -35,7 +36,7 @@ describe('Успешное добавление', () => {
 
   test('пробелы по краям обрезаются', async () => {
     await post(validForm({ title: '   Митап   ', capacity: ' 12 ' })).expect(303);
-    const e = store.findById(5);
+    const e = await store.findById(5);
     assert.equal(e.title, 'Митап');
     assert.equal(e.capacity, 12);
   });
@@ -48,14 +49,14 @@ describe('Успешное добавление', () => {
   test('описание необязательно; многострочное описание сохраняется', async () => {
     await post(validForm({ description: '' })).expect(303);
     await post(validForm({ title: 'Другое', description: 'строка 1\r\nстрока 2' })).expect(303);
-    assert.equal(store.findById(6).description, 'строка 1\nстрока 2');
+    assert.equal((await store.findById(6)).description, 'строка 1\nстрока 2');
   });
 
   test('лишние поля (id, createdAt, role) игнорируются', async () => {
     await post({ ...validForm(), id: '999', createdAt: 'x', role: 'admin' }).expect(303);
-    const e = store.findById(5);
+    const e = await store.findById(5);
     assert.ok(e);
-    assert.equal(store.findById(999), undefined);
+    assert.equal(await store.findById(999), null);
     assert.equal(e.role, undefined);
     assert.ok(e.createdAt instanceof Date);
   });
@@ -80,7 +81,7 @@ describe('Пустые и обязательные поля', () => {
   test('одинаковая форма дважды добавляет две записи (проверка дублей не требуется)', async () => {
     await post(validForm()).expect(303);
     await post(validForm()).expect(303);
-    assert.equal(store.count(), 6);
+    assert.equal(await store.count(), 6);
   });
 
   test('пустая форма → 400 и ошибки во всех обязательных полях', async () => {
@@ -136,8 +137,17 @@ describe('Дата и время', () => {
   test('месяц 13', () => expectFieldError(validForm({ date: '2027-13-01' }), 'date', /Некорректная/));
   test('день 00', () => expectFieldError(validForm({ date: '2027-01-00' }), 'date', /Некорректная/));
   test('год из 5 цифр', () => expectFieldError(validForm({ date: '20270-01-05' }), 'date', /Некорректная/));
-  test('прошедшая дата допустима (проверка не требуется)', async () => {
-    await post(validForm({ date: daysFromNow(-1) })).expect(303);
+  test('вчерашняя дата отклоняется', () => expectFieldError(validForm({ date: daysFromNow(-1) }), 'date', /уже прошла/));
+  test('давно прошедшая дата (2000-01-01) отклоняется', () => expectFieldError(validForm({ date: '2000-01-01' }), 'date', /уже прошла/));
+  test('сегодня, время уже прошло (00:00)', () => expectFieldError(validForm({ date: daysFromNow(0), time: '00:00' }), 'time', /уже прошло/));
+  test('сегодня, время еще не наступило (23:59)', async () => {
+    // В последнюю минуту суток проверка неприменима
+    if (nowTime() === '23:59') return;
+    await post(validForm({ date: daysFromNow(0), time: '23:59' })).expect(303);
+  });
+  test('в форме у даты стоит min = сегодня', async () => {
+    const res = await request(app).get('/add?auth=1').expect(200);
+    assert.match(res.text, new RegExp(`name="date"[^>]*min="${daysFromNow(0)}"`));
   });
   for (const date of ['abc', '2027-1-5', '05.01.2027', '2027/01/05', '20270105', '2027-01-05T10:00', '+02027-01-05']) {
     test(`формат даты "${date}"`, () => expectFieldError(validForm({ date }), 'date', /Некорректная/));
@@ -157,13 +167,13 @@ describe('Количество мест', () => {
   });
   test('ведущие нули допустимы и приводятся к числу', async () => {
     await post(validForm({ capacity: '007' })).expect(303);
-    assert.equal(store.findById(5).capacity, 7);
+    assert.equal((await store.findById(5)).capacity, 7);
   });
 });
 
 describe('Лимиты и формат запроса', () => {
-  test('лимит записей в памяти', async () => {
-    while (store.count() < store.MAX_EVENTS) store.add({ ...validForm(), title: 'x' + store.count(), capacity: 1 });
+  test('лимит записей в базе (500)', async () => {
+    await fillToLimit();
     const res = await post(validForm({ title: 'Еще одно' })).expect(409);
     assert.match(res.text, /лимит/);
   });

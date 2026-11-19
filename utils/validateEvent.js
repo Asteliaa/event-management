@@ -4,13 +4,16 @@
  * поэтому сервер повторяет основные проверки:
  *   – поле не пустое и не состоит из одних пробелов;
  *   – длина не больше допустимой (защита от вставки огромного текста);
- *   – значения списков и формат даты, времени и числа мест корректны.
+ *   – значения списков и формат даты, времени и числа мест корректны;
+ *   – мероприятие не в прошлом: дата не раньше сегодняшней,
+ *     а для сегодняшней даты время начала еще не наступило.
  *
  * Возвращает { data, errors }:
  *   data   – очищенные значения (для сохранения или повторного вывода формы);
  *   errors – объект «поле → сообщение», пустой, если ошибок нет.
  */
 const { EVENT_TYPES, EVENT_FORMATS, LIMITS } = require('./constants');
+const { todayISO, nowTime } = require('./dates');
 
 const DATE_RE = /^(\d{4})-(\d{2})-(\d{2})$/;
 const TIME_RE = /^([01]\d|2[0-3]):([0-5]\d)$/;
@@ -84,6 +87,15 @@ function validateEvent(body) {
     'Укажите дату проведения', 'Некорректная дата'));
   put('time', checkFormatted(src.time, { maxLength: 5, test: (v) => TIME_RE.test(v) },
     'Укажите время начала', 'Время в формате ЧЧ:ММ'));
+  // Регистрировать мероприятие в прошлом нельзя (сравнение строк YYYY-MM-DD и ЧЧ:ММ)
+  if (!errors.date) {
+    const today = todayISO();
+    if (data.date < today) errors.date = 'Дата мероприятия уже прошла';
+    else if (data.date === today && !errors.time && data.time <= nowTime()) {
+      errors.time = 'Время начала уже прошло';
+    }
+  }
+
   put('location', checkText(src.location, { required: true, max: LIMITS.location.max }, 'Место проведения'));
   put('organizer', checkText(src.organizer, { required: true, max: LIMITS.organizer.max }, 'Организатор'));
 

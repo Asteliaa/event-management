@@ -1,0 +1,31 @@
+<%- include('partials/header') %>
+
+<a class="back" href="<%= link('/') %>">← Все мероприятия</a>
+
+<article class="card detail detail--<%= event.type %>">
+  <div class="detail__head">
+    <%- include('partials/typeBadge', { type: event.type }) %>
+    <% if (event.date < today) { %><span class="tag">мероприятие прошло</span><% } %>
+    <h1><%= event.title %></h1>
+  </div>
+
+  <dl class="facts">
+    <div><dt>Дата</dt><dd><%= formatDate(event.date) %></dd></div>
+    <div><dt>Начало</dt><dd><%= event.time %></dd></div>
+    <div><dt>Формат</dt><dd><%= EVENT_FORMATS[event.format] %></dd></div>
+    <div><dt>Место</dt><dd><%= event.location %></dd></div>
+    <div><dt>Организатор</dt><dd><%= event.organizer %></dd></div>
+    <div><dt>Количество мест</dt><dd><%= event.capacity %></dd></div>
+  </dl>
+
+  <h2>Описание</h2>
+  <% if (event.description) { %>
+    <p class="description"><%= event.description %></p>
+  <% } else { %>
+    <p class="muted">Организатор не добавил описание.</p>
+  <% } %>
+
+  <p class="muted small">Запись №<%= event.id %>, добавлена <%= event.createdAt.toLocaleString('ru-RU') %></p>
+</article>
+
+<%- include('partials/footer') %>

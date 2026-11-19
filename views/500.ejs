@@ -1,0 +1,16 @@
+<%- include('partials/header') %>
+
+<section class="card error-page error-page--server">
+  <p class="error-page__code">500</p>
+  <h1>Внутренняя ошибка сервера</h1>
+  <% if (message) { %>
+    <p class="error-page__message"><%= message %></p>
+    <p class="muted">Сообщите администратору сайта. После восстановления доступа страница заработает без перезапуска сервера.</p>
+  <% } else { %>
+    <p>При обработке запроса произошла ошибка. Сервер продолжает работать, попробуйте позже.</p>
+  <% } %>
+  <p class="muted small">Код инцидента: <code><%= incident %></code> (подробности записаны в журнал сервера)</p>
+  <a class="btn btn--primary" href="<%= (locals.link || ((p) => p))('/') %>">На главную</a>
+</section>
+
+<%- include('partials/footer') %>

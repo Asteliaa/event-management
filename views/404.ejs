@@ -1,0 +1,11 @@
+<%- include('partials/header') %>
+
+<section class="card error-page">
+  <p class="error-page__code">404</p>
+  <h1><%= title %></h1>
+  <p><%= message || 'Страницы по этому адресу нет.' %></p>
+  <p class="muted small">Запрошенный адрес: <code><%= url.length > 120 ? url.slice(0, 120) + '…' : url %></code></p>
+  <a class="btn btn--primary" href="<%= (locals.link || ((p) => p))('/') %>">На главную</a>
+</section>
+
+<%- include('partials/footer') %>

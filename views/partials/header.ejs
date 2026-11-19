@@ -1,0 +1,36 @@
+<%
+  // Если ошибка произошла до middleware авторизации, user и link не заданы
+  const currentUser = locals.user || { name: 'Гость', role: 'guest' };
+  const go = locals.link || ((p) => p);
+  const isOrganizer = currentUser.role === 'organizer';
+%>
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title><%= title %> · <%= siteName %></title>
+  <link rel="stylesheet" href="/css/style.css">
+</head>
+<body>
+  <header class="topbar">
+    <div class="topbar__inner">
+      <a class="brand" href="<%= go('/') %>">
+        <span class="brand__mark" aria-hidden="true">E</span><%= siteName %>
+      </a>
+      <nav class="nav" aria-label="Основная навигация">
+        <a href="<%= go('/') %>">Мероприятия</a>
+        <a href="<%= go('/add') %>">Добавить</a>
+        <% if (isOrganizer) { %><a href="<%= go('/logs') %>">Журнал</a><% } %>
+      </nav>
+      <div class="user <%= isOrganizer ? 'user--organizer' : 'user--guest' %>">
+        <span class="user__name"><%= currentUser.name %></span>
+        <% if (isOrganizer) { %>
+          <a class="btn btn--ghost btn--sm" href="/">Выйти</a>
+        <% } else { %>
+          <a class="btn btn--ghost btn--sm" href="/login">Войти</a>
+        <% } %>
+      </div>
+    </div>
+  </header>
+  <main class="container">

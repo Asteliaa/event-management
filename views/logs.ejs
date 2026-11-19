@@ -1,0 +1,30 @@
+<%- include('partials/header') %>
+
+<section class="page-head">
+  <div>
+    <h1>Журнал запросов</h1>
+    <p class="muted">Последние <%= lines.length %> записей из файла <code><%= file %></code>, новые сверху.</p>
+  </div>
+</section>
+
+<% if (lines.length === 0) { %>
+  <div class="empty"><p>Журнал пока пуст.</p></div>
+<% } else { %>
+  <div class="table-wrap">
+    <table class="table table--log">
+      <thead><tr><th>Дата и время</th><th>Метод</th><th>Адрес</th></tr></thead>
+      <tbody>
+        <% lines.forEach(function (line) {
+             const m = /^(\S+ \S+) (\S+) (.*)$/.exec(line) || [null, '', '', line]; %>
+          <tr>
+            <td class="nowrap"><%= m[1] %></td>
+            <td><span class="method method--<%= m[2].toLowerCase() %>"><%= m[2] %></span></td>
+            <td class="log-url"><%= m[3] %></td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+<% } %>
+
+<%- include('partials/footer') %>

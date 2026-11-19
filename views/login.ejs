@@ -1,0 +1,16 @@
+<%- include('partials/header') %>
+
+<section class="card narrow">
+  <h1>Вход</h1>
+  <p>Добавлять мероприятия может только организатор.</p>
+  <p class="muted">
+    Авторизация имитируется: режим организатора включается параметром
+    <code>?auth=1</code> в адресе страницы. Без него вы просматриваете сайт как гость.
+  </p>
+  <div class="actions">
+    <a class="btn btn--primary" href="<%= nextPath %>?auth=1">Войти как организатор</a>
+    <a class="btn btn--ghost" href="/">Продолжить как гость</a>
+  </div>
+</section>
+
+<%- include('partials/footer') %>

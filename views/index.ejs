@@ -1,0 +1,87 @@
+<%- include('partials/header') %>
+
+<section class="page-head">
+  <div>
+    <h1>Мероприятия</h1>
+    <p class="muted">Конференции, вебинары и встречи. Всего в каталоге: <%= total %>.</p>
+  </div>
+  <% if (user.role === 'organizer') { %>
+    <a class="btn btn--primary" href="<%= link('/add') %>">+ Добавить мероприятие</a>
+  <% } %>
+</section>
+
+<% if (created) { %>
+  <div class="alert alert--success" role="status">
+    Мероприятие «<%= created.title %>» добавлено.
+    <a href="<%= link('/item/' + created.id) %>">Открыть</a>
+  </div>
+<% } %>
+<% notices.forEach(function (text) { %>
+  <div class="alert alert--warning" role="status"><%= text %></div>
+<% }) %>
+
+<form class="filters" method="get" action="/" role="search">
+  <% if (user.role === 'organizer') { %><input type="hidden" name="auth" value="1"><% } %>
+  <label class="field field--grow">
+    <span>Поиск</span>
+    <input type="search" name="q" value="<%= filters.q %>" maxlength="100" placeholder="Название, место или организатор">
+  </label>
+  <label class="field">
+    <span>Тип</span>
+    <select name="type">
+      <option value="">Все типы</option>
+      <% Object.keys(EVENT_TYPES).forEach(function (key) { %>
+        <option value="<%= key %>" <%= filters.type === key ? 'selected' : '' %>><%= EVENT_TYPES[key] %></option>
+      <% }) %>
+    </select>
+  </label>
+  <button class="btn btn--secondary" type="submit">Найти</button>
+  <% if (filters.q || filters.type) { %>
+    <a class="btn btn--ghost" href="<%= link('/') %>">Сбросить</a>
+  <% } %>
+</form>
+
+<% if (events.length === 0) { %>
+  <div class="empty">
+    <p><strong>Ничего не найдено.</strong></p>
+    <p class="muted">Измените условия поиска или сбросьте фильтр.</p>
+  </div>
+<% } else { %>
+  <div class="table-wrap">
+    <table class="table">
+      <thead>
+        <tr>
+          <th>№</th>
+          <th>Название</th>
+          <th>Тип</th>
+          <th>Дата и время</th>
+          <th>Формат</th>
+          <th>Мест</th>
+          <th></th>
+        </tr>
+      </thead>
+      <tbody>
+        <% events.forEach(function (e) { %>
+          <tr class="<%= e.date < today ? 'is-past' : '' %>">
+            <td class="num"><%= e.id %></td>
+            <td>
+              <a class="table__title" href="<%= link('/item/' + e.id) %>"><%= e.title %></a>
+              <div class="muted small"><%= e.location %></div>
+            </td>
+            <td><%- include('partials/typeBadge', { type: e.type }) %></td>
+            <td class="nowrap">
+              <%= formatDate(e.date) %><br><span class="muted"><%= e.time %></span>
+              <% if (e.date < today) { %><span class="tag">прошло</span><% } %>
+            </td>
+            <td><%= EVENT_FORMATS[e.format] %></td>
+            <td class="num"><%= e.capacity %></td>
+            <td><a class="btn btn--sm btn--secondary" href="<%= link('/item/' + e.id) %>">Подробнее</a></td>
+          </tr>
+        <% }) %>
+      </tbody>
+    </table>
+  </div>
+  <p class="muted small">Показано: <%= events.length %> из <%= total %>.</p>
+<% } %>
+
+<%- include('partials/footer') %>

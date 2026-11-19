@@ -1,0 +1,95 @@
+<%- include('partials/header') %>
+<%
+  // Вспомогательная функция: атрибуты поля с ошибкой
+  const invalid = (name) => errors[name] ? `aria-invalid="true" aria-describedby="${name}-error"` : '';
+  const val = (name) => values[name] === undefined || values[name] === null ? '' : values[name];
+%>
+
+<a class="back" href="<%= link('/') %>">← Все мероприятия</a>
+
+<section class="card form-card">
+  <h1>Новое мероприятие</h1>
+  <p class="muted">Поля, отмеченные *, обязательны. Длина полей ограничена, данные повторно проверяются на сервере.</p>
+
+  <% if (formError) { %>
+    <div class="alert alert--error" role="alert"><%= formError %></div>
+  <% } %>
+
+  <form method="post" action="/add?auth=1" class="form" autocomplete="off">
+    <label class="field field--full <%= errors.title ? 'has-error' : '' %>">
+      <span>Название *</span>
+      <input type="text" name="title" value="<%= val('title') %>" required maxlength="<%= limits.title.max %>"
+             placeholder="Например: Конференция «Веб-технологии»" <%- invalid('title') %>>
+      <%- include('partials/fieldError', { name: 'title' }) %>
+    </label>
+
+    <label class="field <%= errors.type ? 'has-error' : '' %>">
+      <span>Тип *</span>
+      <select name="type" required <%- invalid('type') %>>
+        <option value="">Выберите тип</option>
+        <% Object.keys(types).forEach(function (key) { %>
+          <option value="<%= key %>" <%= values.type === key ? 'selected' : '' %>><%= types[key] %></option>
+        <% }) %>
+      </select>
+      <%- include('partials/fieldError', { name: 'type' }) %>
+    </label>
+
+    <label class="field <%= errors.format ? 'has-error' : '' %>">
+      <span>Формат *</span>
+      <select name="format" required <%- invalid('format') %>>
+        <option value="">Выберите формат</option>
+        <% Object.keys(formats).forEach(function (key) { %>
+          <option value="<%= key %>" <%= values.format === key ? 'selected' : '' %>><%= formats[key] %></option>
+        <% }) %>
+      </select>
+      <%- include('partials/fieldError', { name: 'format' }) %>
+    </label>
+
+    <label class="field <%= errors.date ? 'has-error' : '' %>">
+      <span>Дата *</span>
+      <input type="date" name="date" value="<%= val('date') %>" required max="9999-12-31" <%- invalid('date') %>>
+      <%- include('partials/fieldError', { name: 'date' }) %>
+    </label>
+
+    <label class="field <%= errors.time ? 'has-error' : '' %>">
+      <span>Время начала *</span>
+      <input type="time" name="time" value="<%= val('time') %>" required <%- invalid('time') %>>
+      <%- include('partials/fieldError', { name: 'time' }) %>
+    </label>
+
+    <label class="field field--full <%= errors.location ? 'has-error' : '' %>">
+      <span>Место проведения *</span>
+      <input type="text" name="location" value="<%= val('location') %>" required maxlength="<%= limits.location.max %>"
+             placeholder="Адрес или «Онлайн-трансляция»" <%- invalid('location') %>>
+      <%- include('partials/fieldError', { name: 'location' }) %>
+    </label>
+
+    <label class="field <%= errors.organizer ? 'has-error' : '' %>">
+      <span>Организатор *</span>
+      <input type="text" name="organizer" value="<%= val('organizer') %>" required maxlength="<%= limits.organizer.max %>" <%- invalid('organizer') %>>
+      <%- include('partials/fieldError', { name: 'organizer' }) %>
+    </label>
+
+    <label class="field <%= errors.capacity ? 'has-error' : '' %>">
+      <span>Количество мест *</span>
+      <input type="text" name="capacity" value="<%= val('capacity') %>" required
+             maxlength="<%= limits.capacity.maxLength %>" inputmode="numeric" pattern="[0-9]{1,5}"
+             placeholder="от <%= limits.capacity.min %> до <%= limits.capacity.max %>" <%- invalid('capacity') %>>
+      <%- include('partials/fieldError', { name: 'capacity' }) %>
+    </label>
+
+    <label class="field field--full <%= errors.description ? 'has-error' : '' %>">
+      <span>Описание</span>
+      <textarea name="description" rows="5" maxlength="<%= limits.description.max %>" <%- invalid('description') %>><%= val('description') %></textarea>
+      <span class="hint">Не более <%= limits.description.max %> символов</span>
+      <%- include('partials/fieldError', { name: 'description' }) %>
+    </label>
+
+    <div class="form__actions">
+      <a class="btn btn--ghost" href="<%= link('/') %>">Отмена</a>
+      <button class="btn btn--primary" type="submit">Добавить мероприятие</button>
+    </div>
+  </form>
+</section>
+
+<%- include('partials/footer') %>

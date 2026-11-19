@@ -3,7 +3,7 @@
  *   GET  /            – список мероприятий
  *   GET  /item/:id    – детальная страница
  *   GET  /add         – форма добавления (только организатор)
- *   POST /add         – добавление в базу данных и редирект на главную
+ *   POST /add         – добавление в массив и редирект на главную
  *   GET  /login       – страница входа (имитация)
  *   GET  /logs        – журнал запросов из файла logs/requests.log (только организатор)
  */
@@ -16,18 +16,18 @@ const asyncHandler = require('../utils/asyncHandler');
 const router = express.Router();
 
 router.route('/')
-  .get(asyncHandler(ctrl.list))
+  .get(ctrl.list)
   .all(methodNotAllowed('GET, HEAD'));
 
 router.route('/item/:id')
-  .get(asyncHandler(ctrl.detail))
+  .get(ctrl.detail)
   .all(methodNotAllowed('GET, HEAD'));
 
 // Несколько middleware подряд для одного маршрута: сначала проверка доступа,
 // затем разбор формы, затем контроллер
 router.route('/add')
   .get(requireAuth, ctrl.showForm)
-  .post(requireAuth, express.urlencoded({ extended: false, limit: '20kb', parameterLimit: 30 }), asyncHandler(ctrl.create))
+  .post(requireAuth, express.urlencoded({ extended: false, limit: '20kb', parameterLimit: 30 }), ctrl.create)
   .all(methodNotAllowed('GET, HEAD, POST'));
 
 router.route('/login')

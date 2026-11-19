@@ -12,7 +12,7 @@ const store = require('../data/events');
 beforeEach(() => store.reset());
 
 describe('Главная страница GET /', () => {
-  test('гость видит список из базы данных', async () => {
+  test('гость видит список из массива', async () => {
     const res = await request(app).get('/').expect(200).expect('Content-Type', /html/);
     assert.match(res.text, /Конференция «Веб-технологии 2026»/);
     assert.match(res.text, /Вебинар: Middleware в Express.js/);
@@ -126,9 +126,9 @@ describe('Имитация авторизации', () => {
   });
 
   test('гость отправляет POST /add → редирект, запись не добавлена', async () => {
-    const before = await store.count();
+    const before = store.count();
     await request(app).post('/add').type('form').send('title=Взлом&type=meetup').expect(303);
-    assert.equal(await store.count(), before);
+    assert.equal(store.count(), before);
   });
 
   test('POST /add?auth=0 → редирект', async () => {

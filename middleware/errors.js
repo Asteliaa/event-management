@@ -57,20 +57,9 @@ function errorHandler(err, req, res, next) {
   const incident = crypto.randomBytes(4).toString('hex');
   if (process.env.NODE_ENV !== 'test') {
     // Системная причина: код ошибки и операция, путь – относительно папки проекта
-    const c = err.cause;
-    let system;
-    if (c && c.syscall && c.address) {
-      // Сетевая ошибка подключения к базе данных
-      system = `${c.code} (${c.syscall} ${c.address}:${c.port})`;
-    } else if (c && c.syscall) {
-      // Ошибка файловой системы (журнал)
-      system = `${c.code} (${c.syscall} ${path.relative(process.cwd(), c.path || '') || '.'})`;
-    } else if (c) {
-      // Ошибка базы данных: код PostgreSQL или сетевой код и текст драйвера
-      system = `${c.code || c.name || 'ERROR'} ${c.message}`;
-    } else {
-      system = err.stack || String(err);
-    }
+    const system = err.cause
+      ? `${err.cause.code} (${err.cause.syscall} ${path.relative(process.cwd(), err.cause.path || '') || '.'})`
+      : (err.stack || String(err));
     console.error(`[ОШИБКА ${incident}] ${req.method} ${req.originalUrl}: ${err.message}\n  причина: ${system}`);
   }
   res.status(500).render('500', {

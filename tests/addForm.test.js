@@ -4,7 +4,7 @@
  */
 const { test, describe, beforeEach } = require('node:test');
 const assert = require('node:assert/strict');
-const { daysFromNow, validForm, encode, fillToLimit } = require('./helpers');
+const { daysFromNow, validForm, encode } = require('./helpers');
 const { nowTime } = require('../utils/dates');
 const request = require('supertest');
 const app = require('../app');
@@ -17,10 +17,10 @@ const post = (body, { type = 'form' } = {}) =>
 
 /** Ожидает 400, ошибку в указанном поле и отсутствие новой записи. */
 async function expectFieldError(body, field, pattern) {
-  const before = await store.count();
+  const before = store.count();
   const res = await post(body).expect(400);
   assert.match(res.text, new RegExp(`id="${field}-error">[^<]*${pattern ? pattern.source : ''}`));
-  assert.equal(await store.count(), before, 'запись не должна добавиться');
+  assert.equal(store.count(), before, 'запись не должна добавиться');
   return res;
 }
 
@@ -36,7 +36,7 @@ describe('Успешное добавление', () => {
 
   test('пробелы по краям обрезаются', async () => {
     await post(validForm({ title: '   Митап   ', capacity: ' 12 ' })).expect(303);
-    const e = await store.findById(5);
+    const e = store.findById(5);
     assert.equal(e.title, 'Митап');
     assert.equal(e.capacity, 12);
   });
@@ -49,14 +49,14 @@ describe('Успешное добавление', () => {
   test('описание необязательно; многострочное описание сохраняется', async () => {
     await post(validForm({ description: '' })).expect(303);
     await post(validForm({ title: 'Другое', description: 'строка 1\r\nстрока 2' })).expect(303);
-    assert.equal((await store.findById(6)).description, 'строка 1\nстрока 2');
+    assert.equal(store.findById(6).description, 'строка 1\nстрока 2');
   });
 
   test('лишние поля (id, createdAt, role) игнорируются', async () => {
     await post({ ...validForm(), id: '999', createdAt: 'x', role: 'admin' }).expect(303);
-    const e = await store.findById(5);
+    const e = store.findById(5);
     assert.ok(e);
-    assert.equal(await store.findById(999), null);
+    assert.equal(store.findById(999), undefined);
     assert.equal(e.role, undefined);
     assert.ok(e.createdAt instanceof Date);
   });
@@ -81,7 +81,7 @@ describe('Пустые и обязательные поля', () => {
   test('одинаковая форма дважды добавляет две записи (проверка дублей не требуется)', async () => {
     await post(validForm()).expect(303);
     await post(validForm()).expect(303);
-    assert.equal(await store.count(), 6);
+    assert.equal(store.count(), 6);
   });
 
   test('пустая форма → 400 и ошибки во всех обязательных полях', async () => {
@@ -167,13 +167,13 @@ describe('Количество мест', () => {
   });
   test('ведущие нули допустимы и приводятся к числу', async () => {
     await post(validForm({ capacity: '007' })).expect(303);
-    assert.equal((await store.findById(5)).capacity, 7);
+    assert.equal(store.findById(5).capacity, 7);
   });
 });
 
 describe('Лимиты и формат запроса', () => {
-  test('лимит записей в базе (500)', async () => {
-    await fillToLimit();
+  test('лимит записей в памяти', async () => {
+    while (store.count() < store.MAX_EVENTS) store.add({ ...validForm(), title: 'x' + store.count(), capacity: 1 });
     const res = await post(validForm({ title: 'Еще одно' })).expect(409);
     assert.match(res.text, /лимит/);
   });

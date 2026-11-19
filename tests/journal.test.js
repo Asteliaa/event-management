@@ -125,9 +125,9 @@ describe('Журнал нельзя восстановить – страниц�
 
   test('ошибка журнала при POST – форма не обрабатывается, запись не добавляется', async () => {
     fs.mkdirSync(LOG_FILE, { recursive: true });
-    const before = await store.count();
+    const before = store.count();
     await request(app).post('/add?auth=1').type('form').send('title=x').expect(500);
-    assert.equal(await store.count(), before);
+    assert.equal(store.count(), before);
   });
 
   test('стили страницы 500 отдаются, хотя журнал сломан', async () => {

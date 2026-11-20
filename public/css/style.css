@@ -1,18 +1,31 @@
 /* EventHub · ПЗ1. Общие стили для всех страниц, подключаются из partials/header.ejs */
 :root {
-  --bg: #f5f4ef;
+  /* Фиолетовая палитра: темно-фиолетовая шапка, фиолетовый акцент, светлый лавандовый фон */
+  --bg: #f6f4fb;
   --surface: #ffffff;
-  --ink: #1d1b2f;
-  --muted: #6b6880;
-  --line: #e3e0d6;
-  --primary: #4b3fd8;
+  --subtle: #faf8fe;
+  --ink: #1e1631;
+  --muted: #625a77;
+  --line: #e5dff1;
+  --field-border: #d3cae6;
+  --top: #2a1650;
+  --top-ink: #ffffff;
+  --nav: #d6ccef;
+  --role-bg: #e9d5ff;
+  --brand-from: #a07cf2;
+  --primary: #6a3dc8;
+  --primary-hover: #5530a8;
   --primary-ink: #ffffff;
-  --conference: #4b3fd8;
-  --conference-bg: #ebe9ff;
-  --webinar: #0b7a6f;
-  --webinar-bg: #dcf4f0;
-  --meetup: #c2410c;
-  --meetup-bg: #ffeadc;
+  --soft: #efeafb;
+  --soft-hover: #e3dbf7;
+  --focus: #cbb8ff;
+  --tag-bg: #ece7f6;
+  --conference: #6a3dc8;
+  --conference-bg: #ede5ff;
+  --webinar: #0f766e;
+  --webinar-bg: #d9f2ee;
+  --meetup: #b4400c;
+  --meetup-bg: #ffe8da;
   --error: #b42318;
   --error-bg: #fdecea;
   --success: #1f7a3d;
@@ -39,7 +52,7 @@ body {
 }
 
 a { color: var(--primary); }
-code { background: #efedf7; padding: 1px 6px; border-radius: 6px; font-size: .9em; word-break: break-all; }
+code { background: var(--soft); padding: 1px 6px; border-radius: 6px; font-size: .9em; word-break: break-all; }
 h1 { font-size: 30px; line-height: 1.2; margin: 0 0 8px; overflow-wrap: anywhere; }
 h2 { font-size: 20px; margin: 24px 0 8px; }
 
@@ -49,7 +62,7 @@ h2 { font-size: 20px; margin: 24px 0 8px; }
 .num { text-align: right; font-variant-numeric: tabular-nums; }
 
 /* Верхняя панель */
-.topbar { background: var(--ink); color: #fff; position: sticky; top: 0; z-index: 10; }
+.topbar { background: var(--top); color: var(--top-ink); position: sticky; top: 0; z-index: 10; }
 .topbar__inner {
   max-width: 1120px; margin: 0 auto; padding: 12px 16px;
   display: flex; align-items: center; gap: 24px; flex-wrap: wrap;
@@ -57,15 +70,15 @@ h2 { font-size: 20px; margin: 24px 0 8px; }
 .brand { display: flex; align-items: center; gap: 10px; color: #fff; text-decoration: none; font-weight: 700; font-size: 20px; }
 .brand__mark {
   display: inline-grid; place-items: center; width: 32px; height: 32px; border-radius: 9px;
-  background: linear-gradient(135deg, var(--conference), var(--webinar) 55%, var(--meetup));
+  background: linear-gradient(135deg, var(--brand-from), var(--primary));
   font-size: 17px;
 }
 .nav { display: flex; gap: 18px; flex: 1; }
-.nav a { color: #d9d6ee; text-decoration: none; font-weight: 500; }
-.nav a:hover { color: #fff; }
+.nav a { color: var(--nav); text-decoration: none; font-weight: 500; }
+.nav a:hover { color: var(--top-ink); }
 .user { display: flex; align-items: center; gap: 10px; }
 .user__name { font-size: 14px; padding: 4px 10px; border-radius: 999px; background: rgba(255,255,255,.12); }
-.user--organizer .user__name { background: #ffd56b; color: var(--ink); font-weight: 600; }
+.user--organizer .user__name { background: var(--role-bg); color: var(--ink); font-weight: 600; }
 .topbar .btn--ghost { color: #fff; border-color: rgba(255,255,255,.35); }
 
 .container { width: 100%; max-width: 1120px; margin: 0 auto; padding: 28px 16px 40px; flex: 1; }
@@ -78,9 +91,9 @@ h2 { font-size: 20px; margin: 24px 0 8px; }
   font: inherit; font-weight: 600; text-decoration: none; cursor: pointer; white-space: nowrap;
 }
 .btn--primary { background: var(--primary); color: var(--primary-ink); }
-.btn--primary:hover { background: #3a2fc0; }
-.btn--secondary { background: #ecebf6; color: var(--ink); }
-.btn--secondary:hover { background: #dfddf0; }
+.btn--primary:hover { background: var(--primary-hover); }
+.btn--secondary { background: var(--soft); color: var(--ink); }
+.btn--secondary:hover { background: var(--soft-hover); }
 .btn--ghost { background: transparent; color: var(--ink); border-color: var(--line); }
 .btn--sm { padding: 6px 12px; font-size: 14px; }
 
@@ -104,11 +117,11 @@ h2 { font-size: 20px; margin: 24px 0 8px; }
 .field > span { font-size: 14px; font-weight: 600; }
 .field--grow { flex: 1 1 260px; }
 .field input, .field select, .field textarea {
-  font: inherit; color: var(--ink); background: #fff;
-  border: 1px solid #cfccc0; border-radius: 10px; padding: 9px 12px; width: 100%;
+  font: inherit; color: var(--ink); background: var(--surface);
+  border: 1px solid var(--field-border); border-radius: 10px; padding: 9px 12px; width: 100%;
 }
 .field textarea { resize: vertical; min-height: 110px; }
-.field input:focus, .field select:focus, .field textarea:focus { outline: 3px solid #c9c4ff; border-color: var(--primary); }
+.field input:focus, .field select:focus, .field textarea:focus { outline: 3px solid var(--focus); border-color: var(--primary); }
 .field.has-error input, .field.has-error select, .field.has-error textarea { border-color: var(--error); background: #fffafa; }
 .field__error { margin: 0; color: var(--error); font-size: 14px; }
 .hint { color: var(--muted); font-size: 13px; }
@@ -117,9 +130,9 @@ h2 { font-size: 20px; margin: 24px 0 8px; }
 .table-wrap { overflow-x: auto; background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); }
 .table { width: 100%; border-collapse: collapse; min-width: 760px; }
 .table th, .table td { padding: 12px 14px; border-bottom: 1px solid var(--line); text-align: left; vertical-align: top; }
-.table th { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); background: #faf9f5; }
+.table th { font-size: 13px; text-transform: uppercase; letter-spacing: .04em; color: var(--muted); background: var(--subtle); }
 .table tr:last-child td { border-bottom: 0; }
-.table td:nth-child(2) { min-width: 12em; }
+.table--events .col-title { min-width: 12em; }
 .table__title { font-weight: 600; color: var(--ink); text-decoration: none; overflow-wrap: break-word; hyphens: auto; }
 .table__title:hover { color: var(--primary); text-decoration: underline; }
 .table tr.is-past { opacity: .6; }
@@ -129,9 +142,9 @@ h2 { font-size: 20px; margin: 24px 0 8px; }
 .badge--conference { color: var(--conference); background: var(--conference-bg); }
 .badge--webinar { color: var(--webinar); background: var(--webinar-bg); }
 .badge--meetup { color: var(--meetup); background: var(--meetup-bg); }
-.tag { display: inline-block; margin-left: 6px; font-size: 12px; padding: 1px 8px; border-radius: 6px; background: #ecebe4; color: var(--muted); }
+.tag { display: inline-block; margin-left: 6px; font-size: 12px; padding: 1px 8px; border-radius: 6px; background: var(--tag-bg); color: var(--muted); }
 
-.empty { text-align: center; padding: 40px 16px; background: var(--surface); border: 1px dashed #cfccc0; border-radius: var(--radius); }
+.empty { text-align: center; padding: 40px 16px; background: var(--surface); border: 1px dashed var(--field-border); border-radius: var(--radius); }
 
 /* Карточки и детальная страница */
 .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 28px; }
@@ -141,7 +154,7 @@ h2 { font-size: 20px; margin: 24px 0 8px; }
 .detail--meetup { border-top-color: var(--meetup); }
 .detail__head h1 { margin-top: 12px; }
 .facts { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 12px; margin: 20px 0 0; }
-.facts div { background: #faf9f5; border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; min-width: 0; }
+.facts div { background: var(--subtle); border: 1px solid var(--line); border-radius: 10px; padding: 12px 14px; min-width: 0; }
 .facts dt { font-size: 13px; color: var(--muted); }
 .facts dd { margin: 2px 0 0; font-weight: 600; overflow-wrap: anywhere; }
 .description { white-space: pre-line; overflow-wrap: anywhere; max-width: 72ch; }
@@ -167,12 +180,51 @@ h2 { font-size: 20px; margin: 24px 0 8px; }
   .nav { order: 3; flex-basis: 100%; }
   .form__actions { flex-direction: column-reverse; }
   .form__actions .btn { width: 100%; }
+
+  /* Список мероприятий на телефоне: каждая строка таблицы – отдельная карточка,
+     без горизонтальной прокрутки и переноса слов посередине */
+  .table--events { min-width: 0; }
+  .table--events thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .table--events tbody { display: block; }
+  .table--events tr {
+    display: flex; flex-wrap: wrap; align-items: center; gap: 8px 14px;
+    padding: 14px 16px; border-bottom: 1px solid var(--line);
+  }
+  .table--events tr:last-child { border-bottom: 0; }
+  .table--events td { display: block; padding: 0; border: 0; }
+  .table--events .col-id { display: none; }
+  /* Одинаковый порядок в каждой карточке: название / тип, формат, места / дата / кнопка */
+  .table--events .col-title { flex-basis: 100%; order: 1; }
+  .table--events .col-type { order: 2; }
+  .table--events .col-format { order: 3; }
+  .table--events .col-cap { order: 4; }
+  .table--events .col-date { order: 5; flex-basis: 100%; white-space: normal; }
+  .table--events .col-action { order: 6; }
+  .table--events .col-date br { display: none; }
+  .table--events .col-date .muted::before { content: ", "; }
+  .table--events .col-format, .table--events .col-cap { color: var(--muted); }
+  .table--events .col-cap::before { content: attr(data-label) " "; }
+  .table--events .col-action { flex-basis: 100%; }
+  .table--events .col-action .btn { width: 100%; }
 }
 
 /* Журнал запросов */
 .table--log { min-width: 560px; }
 .log-url { font-family: Consolas, "Courier New", monospace; font-size: 14px; overflow-wrap: anywhere; }
-.method { font-family: Consolas, monospace; font-size: 13px; font-weight: 700; padding: 2px 8px; border-radius: 6px; background: #ecebf6; }
+.method { font-family: Consolas, monospace; font-size: 13px; font-weight: 700; padding: 2px 8px; border-radius: 6px; background: var(--soft); }
 .method--post { background: var(--meetup-bg); color: var(--meetup); }
 .method--get { background: var(--webinar-bg); color: var(--webinar); }
 .error-page__message { font-weight: 600; color: var(--error); }
+
+/* Журнал запросов на телефоне: каждая запись – карточка «время, метод / адрес целиком».
+   Блок стоит после общих правил журнала, чтобы переопределить min-width таблицы */
+@media (max-width: 640px) {
+  .table--log { min-width: 0; }
+  .table--log thead { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); }
+  .table--log tbody { display: block; }
+  .table--log tr { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px; padding: 12px 16px; border-bottom: 1px solid var(--line); }
+  .table--log tr:last-child { border-bottom: 0; }
+  .table--log td { display: block; padding: 0; border: 0; }
+  .table--log .col-time { color: var(--muted); font-size: 14px; }
+  .table--log .col-url { flex-basis: 100%; }
+}

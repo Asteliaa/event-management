@@ -48,7 +48,7 @@
   </div>
 <% } else { %>
   <div class="table-wrap">
-    <table class="table">
+    <table class="table table--events">
       <thead>
         <tr>
           <th>№</th>
@@ -63,19 +63,19 @@
       <tbody>
         <% events.forEach(function (e) { %>
           <tr class="<%= e.date < today ? 'is-past' : '' %>">
-            <td class="num"><%= e.id %></td>
-            <td>
+            <td class="num col-id"><%= e.id %></td>
+            <td class="col-title">
               <a class="table__title" href="<%= link('/item/' + e.id) %>"><%= e.title %></a>
               <div class="muted small"><%= e.location %></div>
             </td>
-            <td><%- include('partials/typeBadge', { type: e.type }) %></td>
-            <td class="nowrap">
+            <td class="col-type"><%- include('partials/typeBadge', { type: e.type }) %></td>
+            <td class="nowrap col-date">
               <%= formatDate(e.date) %><br><span class="muted"><%= e.time %></span>
               <% if (e.date < today) { %><span class="tag">прошло</span><% } %>
             </td>
-            <td><%= EVENT_FORMATS[e.format] %></td>
-            <td class="num"><%= e.capacity %></td>
-            <td><a class="btn btn--sm btn--secondary" href="<%= link('/item/' + e.id) %>">Подробнее</a></td>
+            <td class="col-format"><%= EVENT_FORMATS[e.format] %></td>
+            <td class="num col-cap" data-label="Мест:"><%= e.capacity %></td>
+            <td class="col-action"><a class="btn btn--sm btn--secondary" href="<%= link('/item/' + e.id) %>">Подробнее</a></td>
           </tr>
         <% }) %>
       </tbody>

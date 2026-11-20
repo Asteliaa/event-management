@@ -17,9 +17,9 @@
         <% lines.forEach(function (line) {
              const m = /^(\S+ \S+) (\S+) (.*)$/.exec(line) || [null, '', '', line]; %>
           <tr>
-            <td class="nowrap"><%= m[1] %></td>
-            <td><span class="method method--<%= m[2].toLowerCase() %>"><%= m[2] %></span></td>
-            <td class="log-url"><%= m[3] %></td>
+            <td class="nowrap col-time"><%= m[1] %></td>
+            <td class="col-method"><span class="method method--<%= m[2].toLowerCase() %>"><%= m[2] %></span></td>
+            <td class="log-url col-url"><%= m[3] %></td>
           </tr>
         <% }) %>
       </tbody>
